@@ -53,6 +53,7 @@ osThreadId buzzertaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+void app_heartbeat(void);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -136,7 +137,8 @@ void StartDefaultTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    app_heartbeat();
+    osDelay(20);
   }
   /* USER CODE END StartDefaultTask */
 }

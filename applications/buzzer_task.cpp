@@ -1,24 +1,29 @@
 #include "cmsis_os.h"
 #include "io/buzzer/buzzer.hpp"
 
-// C板
-sp::Buzzer buzzer(&htim4, TIM_CHANNEL_3, 84e6);
-
-// 达妙
-// sp::Buzzer buzzer(&htim12, TIM_CHANNEL_2, 240e6);
-
-extern "C" void buzzer_task()
+extern "C" void buzzer_task(void const * argument)
 {
-  buzzer.set(5000, 0.1);
+  (void)argument;
 
-  for (int i = 0; i < 3; i++) {
+  sp::Buzzer buzzer(&htim4, TIM_CHANNEL_3, 84000000.0f);
+  constexpr float notes[] = {1000.0f, 1500.0f, 2000.0f};
+
+  buzzer.stop();
+  for (const float frequency : notes) {
+    buzzer.set(frequency, 0.10f);
+
+    if (HAL_TIM_GenerateEvent(&htim4, TIM_EVENTSOURCE_UPDATE) != HAL_OK) {
+      Error_Handler();
+    }
+    __HAL_TIM_CLEAR_FLAG(&htim4, TIM_FLAG_UPDATE);
+
     buzzer.start();
-    osDelay(100);
+    osDelay(120);
     buzzer.stop();
-    osDelay(100);
+    osDelay(60);
   }
 
-  while (true) {
-    osDelay(100);
+  for (;;) {
+    osDelay(1000);
   }
 }
