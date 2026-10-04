@@ -1,4 +1,4 @@
-# ledtask：RoboMaster C 板基础功能
+# robomaster-stage-one：RoboMaster C 板基础功能
 
 本工程实现启动提示音、RGB 渐变流水灯、任务心跳监测，以及 BMI088 三轴加速度和三轴角速度的串口输出。
 
@@ -37,7 +37,7 @@
 ## 3. 工程目录
 
 ```text
-ledtask/
+robomaster-stage-one/
 ├─ applications/
 │  ├─ buzzer_task.c         # 启动提示音
 │  ├─ led_task.c            # 渐变流水灯与心跳监测
@@ -56,7 +56,7 @@ ledtask/
 ├─ Middlewares/            # FreeRTOS 等组件
 ├─ sp_middleware/          # 保留的中间件代码
 ├─ cmake/                  # 工具链与构建配置
-├─ ledtask.ioc             # STM32CubeMX 配置
+├─ robomaster-stage-one.ioc             # STM32CubeMX 配置
 ├─ CMakeLists.txt          # 工程源文件和编译设置
 ├─ CMakePresets.json       # Debug / Release 构建预设
 ├─ openocd.cfg             # 下载器与芯片配置
@@ -73,7 +73,7 @@ LED、蜂鸣器和 IMU 应用任务均使用 `.c` 文件。LED 通过 `led_set()
 
 ### 开发工具
 
-- STM32CubeMX：查看或修改 `ledtask.ioc`。
+- STM32CubeMX：查看或修改 `robomaster-stage-one.ioc`。
 - Arm GNU Toolchain：提供 `arm-none-eabi-gcc` 等工具。
 - CMake 3.22 或更新版本、Ninja：构建工程。
 - OpenOCD：通过已配置的下载器烧录。
@@ -88,14 +88,14 @@ cmake --preset Debug
 cmake --build --preset Debug
 ```
 
-预期生成文件：`build/Debug/ledtask.elf`。
+预期生成文件：`build/Debug/robomaster-stage-one.elf`。
 
 ### 烧录
 
 确认开发板供电和下载器连接正确后，在项目根目录运行：
 
 ```bash
-openocd -f openocd.cfg -c "program build/Debug/ledtask.elf verify reset exit"
+openocd -f openocd.cfg -c "program build/Debug/robomaster-stage-one.elf verify reset exit"
 ```
 
 当前 `openocd.cfg` 选择 `interface/cmsis-dap.cfg` 和 `target/stm32f4x.cfg`。如果换用其他下载器，应修改相应接口配置。无线烧录器是否能直接使用此命令取决于其支持的协议和工作模式。
@@ -136,7 +136,7 @@ openocd -f openocd.cfg -c "program build/Debug/ledtask.elf verify reset exit"
 
 - CubeMX 重新生成代码前先保存版本，自定义内容尽量放在 `USER CODE` 区域或独立应用文件中。
 - 重新生成后检查任务入口、PWM 通道、SPI/UART 配置、源文件列表及浮点打印链接选项，避免自定义设置被覆盖。
-- 当前 `ledtask.ioc` 对 PH10 配置了上拉，但 `tim.c` 中对应初始化仍为 `GPIO_NOPULL`。重新生成可能改变这一处，应检查差异；当前实际编译使用的是源码。
+- 当前 `robomaster-stage-one.ioc` 对 PH10 配置了上拉，但 `tim.c` 中对应初始化仍为 `GPIO_NOPULL`。重新生成可能改变这一处，应检查差异；当前实际编译使用的是源码。
 - 不要在普通任务循环里长时间忙等；根据任务需求使用合理的等待方式。
 - `build/` 为构建输出，已由 `.gitignore` 忽略。应提交源码、配置和文档。
 - 本文根据源码整理，没有在编写文档时执行新的编译或硬件测试。
@@ -221,10 +221,10 @@ ACC X=0.012 Y=-0.025 Z=9.800 | GYRO X=0.061 Y=-0.122 Z=0.000
 
 若无输出，先确认 COM、TX/RX/GND、供电及串口参数；若乱码，检查波特率；若一直报初始化错误，检查 SPI 配置及板型。LED 的心跳仍监测默认任务，不代表 IMU 读数正常。
 
-已同步 `ledtask.ioc` 的 SPI1、USART1 和片选配置，并启用 HAL SPI/UART 驱动和 `-u _printf_float`，以支持 `snprintf` 的浮点输出。IMU 任务由 `freertos.c` 的 USER CODE 区创建，CubeMX 的任务列表中不用再重复添加。CubeMX 配置文件尚未在图形界面重新生成验证；重新生成后应检查差异，保留自定义任务和链接设置。
+已同步 `robomaster-stage-one.ioc` 的 SPI1、USART1 和片选配置，并启用 HAL SPI/UART 驱动和 `-u _printf_float`，以支持 `snprintf` 的浮点输出。IMU 任务由 `freertos.c` 的 USER CODE 区创建，CubeMX 的任务列表中不用再重复添加。CubeMX 配置文件尚未在图形界面重新生成验证；重新生成后应检查差异，保留自定义任务和链接设置。
 
 串口输出尚待硬件验证，已有编译记录见下节。传感器寄存器和时序参考工程已有的 `sp_middleware/io/bmi088` 驱动，以及 [Bosch BMI088 数据手册](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi088-ds001.pdf)；板级连线参考 RoboMaster C 型原理图与用户手册。
 
 ### 2026-10-04 编译修复记录
 
-从本机 STM32Cube FW_F4 V1.28.3 补齐 HAL SPI/UART 的两个源文件和两个头文件。随后 Debug 配置、编译和链接通过，生成 `build/Debug/ledtask.elf`。当时 Flash 使用 39028 字节，RAM 使用 19000 字节；这些数值仅对应当次构建。后续代码修改需要重新编译；串口输出仍待硬件验证。仓库应保留这四个 HAL 驱动文件。
+从本机 STM32Cube FW_F4 V1.28.3 补齐 HAL SPI/UART 的两个源文件和两个头文件。随后 Debug 配置、编译和链接通过，生成 `build/Debug/robomaster-stage-one.elf`。当时 Flash 使用 39028 字节，RAM 使用 19000 字节；这些数值仅对应当次构建。后续代码修改需要重新编译；串口输出仍待硬件验证。仓库应保留这四个 HAL 驱动文件。
