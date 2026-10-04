@@ -1,6 +1,6 @@
-# ledtask：RoboMaster C 板 LED 与蜂鸣器控制
+# ledtask：RoboMaster C 板基础功能
 
-本工程实现启动提示音、RGB 流水灯和基于任务心跳的运行状态指示。
+本工程实现启动提示音、RGB 渐变流水灯、任务心跳监测，以及 BMI088 三轴加速度和三轴角速度的串口输出。
 
 工程采用 STM32CubeMX 配置外设，使用 STM32 HAL 和 FreeRTOS，LED 与蜂鸣器任务采用基础 C 语法直接控制 PWM，在 `applications` 中编写应用任务，通过 CMake 构建。
 
@@ -9,16 +9,14 @@
 | 功能 | 当前代码行为 |
 | --- | --- |
 | 启动提示音 | 每次程序启动，依次播放约 1000、1500、2000 Hz 三个音，每个音持续约 120 ms，之后静音约 60 ms；播放一遍后停止 |
-| RGB 流水灯 | 按红 → 绿 → 蓝循环，各颜色通过 for 循环渐亮、渐暗；占空比 0% → 15% → 0%，每步约 30 ms，占空比每步变化 1 个百分点，每种颜色约 0.93 s，一轮约 2.79 s |
-| 心跳监测 | 默认任务每约 20 ms 更新一次心跳计数；LED 任务每约 500 ms 比较一次心跳，未变化时暂停渐变、保持红色，并每约 20 ms 等待检查恢复 |
+| RGB 流水灯 | 按红 → 绿 → 蓝循环，各颜色通过 `for` 循环渐亮、渐暗；占空比 0% → 50% → 0%，每步约 30 ms，每步变化 1 个百分点，每种颜色约 3.03 s，一轮约 9.09 s（不含调度和故障等待时间） |
+| 心跳监测 | 默认任务每约 20 ms 更新一次心跳计数；LED 任务每约 500 ms 比较一次心跳，未变化时暂停渐变、保持 15% 占空比的红色，并每约 20 ms 等待检查恢复 |
+| IMU 串口输出 | 通过 USART1 输出 X、Y、Z 三轴加速度与角速度，每次发送后等待约 100 ms；初始化失败时报告错误并重试 |
 
 这里的流水灯是板载 RGB 灯按颜色依次渐亮、渐暗的效果。蜂鸣器在上电、复位或烧录后程序重新运行时播放，不直接检测烧录器是否下载成功。
 
-<<<<<<< HEAD
-上述为当前源码对应的预期行为；实际验收以开发板运行结果为准。当前已加入 IMU 三轴加速度、三轴角速度串口输出代码，待编译和上板验证；DT7 遥控器通讯及电机联动尚未实现。
+上述为源码对应的预期行为，实际验收以开发板运行结果为准。2026-10-04 补齐 HAL 驱动后，工程的 Debug 配置、编译和链接已通过；此后修改过代码和注释，当前最新版本尚未重新编译或确认硬件运行结果。DT7 遥控器通讯及电机联动尚未实现。
 
-=======
->>>>>>> f6459c0b77a84a760951d85e581b224b32a71640
 ## 2. 硬件与外设
 
 - 开发板：RoboMaster 开发板 C 型，STM32F407 系列。
@@ -41,17 +39,22 @@
 ```text
 ledtask/
 ├─ applications/
-│  ├─ buzzer_task.c       # 启动提示音
-│  └─ led_task.c          # RGB 流水灯与心跳计数
+│  ├─ buzzer_task.c         # 启动提示音
+│  ├─ led_task.c            # 渐变流水灯与心跳监测
+│  ├─ imu_task.c            # IMU 读取与串口打印任务
+│  ├─ bmi088_simple.c       # BMI088 基础 C 驱动
+│  └─ bmi088_simple.h       # BMI088 驱动接口声明
 ├─ Core/
-│  ├─ Inc/                 # 配置及头文件
+│  ├─ Inc/                 # 配置及外设头文件
 │  └─ Src/
-│     ├─ main.c            # 系统初始化与启动调度器
+│     ├─ main.c            # 初始化硬件，启动调度器
 │     ├─ freertos.c        # 创建任务，默认任务更新心跳
-│     └─ tim.c             # TIM4、TIM5 与引脚初始化
+│     ├─ tim.c             # TIM4、TIM5 初始化
+│     ├─ spi.c             # SPI1 初始化
+│     └─ usart.c           # USART1 初始化
 ├─ Drivers/                # 芯片支持与 HAL 驱动
 ├─ Middlewares/            # FreeRTOS 等组件
-├─ sp_middleware/          # LED、蜂鸣器等封装驱动
+├─ sp_middleware/          # 保留的中间件代码
 ├─ cmake/                  # 工具链与构建配置
 ├─ ledtask.ioc             # STM32CubeMX 配置
 ├─ CMakeLists.txt          # 工程源文件和编译设置
@@ -61,6 +64,10 @@ ledtask/
 ```
 
 当前 `sp_middleware` 随主仓库管理，不是 Git 子模块。下载仓库时应保留该目录。
+
+### 基础 C 版本说明
+
+LED、蜂鸣器和 IMU 应用任务均使用 `.c` 文件。LED 通过 `led_set()` 设置占空比、通过 `check_heartbeat()` 检查默认任务进度；蜂鸣器使用整数数组和下标循环播放音符；IMU 使用普通函数读写寄存器并发送数据。当前应用不依赖 C++ 类或匿名函数，`sp_middleware` 目录保留供后续学习。
 
 ## 4. 编译与烧录
 
@@ -98,14 +105,14 @@ openocd -f openocd.cfg -c "program build/Debug/ledtask.elf verify reset exit"
 ## 5. 程序运行逻辑
 
 1. `main()` 初始化 HAL 和系统时钟。
-2. 初始化 GPIO、TIM5 和 TIM4。
-3. `MX_FREERTOS_Init()` 创建默认任务、LED 任务和蜂鸣器任务。
+2. 初始化 GPIO、TIM5、TIM4、SPI1 和 USART1。
+3. `MX_FREERTOS_Init()` 创建默认任务、LED 任务、蜂鸣器任务和 IMU 任务。
 4. `osKernelStart()` 启动任务调度。
-5. 默认任务循环更新心跳；LED 任务检查心跳并显示颜色；蜂鸣器任务播放一遍提示音后进入周期等待。
+5. 默认任务循环更新心跳；LED 任务显示渐变灯效；蜂鸣器任务播放一遍提示音后进入周期等待；IMU 任务初始化传感器、读取数据并通过串口发送。
 
 任务使用 `osDelay()` 等待时会让出 CPU，其他就绪任务仍可运行，所以蜂鸣器的音符间隔不会要求 LED 任务一起等待。当前 FreeRTOS 节拍配置为 1000 Hz，实际间隔还受到任务调度影响。
 
-### heartbeat 的作用与边界
+### 心跳（heartbeat）的作用与边界
 
 `app_heartbeat()` 每调用一次就增加一次计数，表示被监测的工作执行到了该位置。LED 任务比较前后两次计数，判断默认任务是否仍在推进。
 
@@ -128,7 +135,7 @@ openocd -f openocd.cfg -c "program build/Debug/ledtask.elf verify reset exit"
 ## 7. 开发注意事项
 
 - CubeMX 重新生成代码前先保存版本，自定义内容尽量放在 `USER CODE` 区域或独立应用文件中。
-- 重新生成后检查任务入口、PWM 通道、源文件列表及 C++ 编译配置，避免自定义设置被覆盖。
+- 重新生成后检查任务入口、PWM 通道、SPI/UART 配置、源文件列表及浮点打印链接选项，避免自定义设置被覆盖。
 - 当前 `ledtask.ioc` 对 PH10 配置了上拉，但 `tim.c` 中对应初始化仍为 `GPIO_NOPULL`。重新生成可能改变这一处，应检查差异；当前实际编译使用的是源码。
 - 不要在普通任务循环里长时间忙等；根据任务需求使用合理的等待方式。
 - `build/` 为构建输出，已由 `.gitignore` 忽略。应提交源码、配置和文档。
@@ -152,22 +159,15 @@ docs: 添加项目说明和编译烧录指南
 feat(led): 调整流水灯切换效果
 fix(buzzer): 修复提示音播放问题
 ```
-<<<<<<< HEAD
 
 ## 9. 后续任务
 
-- 完成 IMU 串口输出的编译和上板验证。
+- 重新编译最新版本并完成 IMU 串口输出的上板验证。
 - DT7 遥控器通讯和模式切换。
 - GM6020 电机控制、姿态联动及复位。
 - 持续完善接线说明、实际验证记录和稳定版本标签。
 
 中间件中已有的其他驱动不代表相关应用任务已经完成。后续以实际接入和验证结果更新本文。
-
-
-## 基础 C 版本说明
-
-应用任务为两个 .c 文件，不使用 C++ 类、匿名函数、引用捕获或范围 for。LED 由普通函数 led_set() 设置占空比，check_heartbeat() 检查默认任务进度；蜂鸣器使用整数数组和下标循环播放音符。sp_middleware 目录保留供后续学习，当前两个任务不调用其中的 C++ 驱动。
-
 
 ## 10. BMI088 三轴数据串口输出（基础 C）
 
@@ -175,7 +175,7 @@ fix(buzzer): 修复提示音播放问题
 
 - `Core/Src/spi.c`、`Core/Inc/spi.h`：SPI1 初始化，2.625 MHz，模式 3（CPOL 高、CPHA 第二沿）。
 - `Core/Src/usart.c`、`Core/Inc/usart.h`：USART1 初始化，115200、8N1、无流控。
-- `applications/bmi088_simple.c/.h`：寄存器读写、软复位、芯片 ID 与配置检查、数据换算。
+- `applications/bmi088_simple.c`、`applications/bmi088_simple.h`：寄存器读写、软复位、芯片 ID 与配置检查、数据换算。
 - `applications/imu_task.c`：创建后初始化 IMU，约每 100 ms 读取并发送一行文本。
 - `main.c` 初始化 SPI1 和 USART1；`freertos.c` 在 USER CODE 的 RTOS_THREADS 区域创建 IMU 任务，栈为 1024 个字（4096 字节）。
 
@@ -223,10 +223,8 @@ ACC X=0.012 Y=-0.025 Z=9.800 | GYRO X=0.061 Y=-0.122 Z=0.000
 
 已同步 `ledtask.ioc` 的 SPI1、USART1 和片选配置，并启用 HAL SPI/UART 驱动和 `-u _printf_float`，以支持 `snprintf` 的浮点输出。IMU 任务由 `freertos.c` 的 USER CODE 区创建，CubeMX 的任务列表中不用再重复添加。CubeMX 配置文件尚未在图形界面重新生成验证；重新生成后应检查差异，保留自定义任务和链接设置。
 
-本次只编写和接入代码，未执行编译、烧录或硬件测试。传感器寄存器和时序参考工程已有的 `sp_middleware/io/bmi088` 驱动，以及 [Bosch BMI088 数据手册](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi088-ds001.pdf)；板级连线参考 RoboMaster C 型原理图与用户手册。
+串口输出尚待硬件验证，已有编译记录见下节。传感器寄存器和时序参考工程已有的 `sp_middleware/io/bmi088` 驱动，以及 [Bosch BMI088 数据手册](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmi088-ds001.pdf)；板级连线参考 RoboMaster C 型原理图与用户手册。
 
 ### 2026-10-04 编译修复记录
 
-从本机 STM32Cube FW_F4 V1.28.3 补齐 HAL SPI/UART 的两个源文件和两个头文件。随后 Debug 配置、编译和链接通过，生成 build/Debug/ledtask.elf。此次 Flash 使用 39028 字节，RAM 使用 19000 字节。以上更新了前文的未编译状态；尚未烧录及验证实际传感器和串口输出。提交时需包含这四个新增驱动文件。
-=======
->>>>>>> f6459c0b77a84a760951d85e581b224b32a71640
+从本机 STM32Cube FW_F4 V1.28.3 补齐 HAL SPI/UART 的两个源文件和两个头文件。随后 Debug 配置、编译和链接通过，生成 `build/Debug/ledtask.elf`。当时 Flash 使用 39028 字节，RAM 使用 19000 字节；这些数值仅对应当次构建。后续代码修改需要重新编译；串口输出仍待硬件验证。仓库应保留这四个 HAL 驱动文件。
