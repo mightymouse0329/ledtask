@@ -16,7 +16,6 @@ void buzzer_task(void const *argument)
     __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, period / 10);
     __HAL_TIM_SET_COUNTER(&htim4, 0);
 
-    /* 让新设置的分频和 PWM 参数在本次发声前生效。 */
     HAL_TIM_GenerateEvent(&htim4, TIM_EVENTSOURCE_UPDATE);
     __HAL_TIM_CLEAR_FLAG(&htim4, TIM_FLAG_UPDATE);
 

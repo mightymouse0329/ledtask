@@ -54,6 +54,7 @@ osThreadId buzzertaskHandle;
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 void app_heartbeat(void);
+void imu_task(void const *argument);
 
 /* USER CODE END FunctionPrototypes */
 
@@ -119,6 +120,11 @@ void MX_FREERTOS_Init(void) {
   buzzertaskHandle = osThreadCreate(osThread(buzzertask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
+
+  osThreadDef(imutask, imu_task, osPriorityLow, 0, 1024);
+  if (osThreadCreate(osThread(imutask), NULL) == NULL) {
+    Error_Handler();
+  }
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 

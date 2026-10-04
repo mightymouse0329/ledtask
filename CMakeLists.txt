@@ -49,6 +49,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     applications/led_task.c
     applications/buzzer_task.c
+    applications/imu_task.c
+    applications/bmi088_simple.c
 )
 
 # Add include paths
@@ -72,4 +74,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
 )
+
+
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
 

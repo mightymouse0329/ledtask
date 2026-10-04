@@ -22,6 +22,8 @@
 #include "cmsis_os.h"
 #include "tim.h"
 #include "gpio.h"
+#include "spi.h"
+#include "usart.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -92,6 +94,8 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM5_Init();
   MX_TIM4_Init();
+  MX_SPI1_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
