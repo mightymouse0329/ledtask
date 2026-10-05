@@ -27,6 +27,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "remote_control.h"
 
 /* USER CODE END Includes */
 
@@ -96,7 +97,9 @@ int main(void)
   MX_TIM4_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+  remote_start();
 
   /* USER CODE END 2 */
 

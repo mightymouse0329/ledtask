@@ -25,6 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "remote_control.h"
 
 /* USER CODE END Includes */
 
@@ -143,6 +144,7 @@ void StartDefaultTask(void const * argument)
   /* Infinite loop */
   for(;;)
   {
+    remote_service();
     app_heartbeat();
     osDelay(20);
   }

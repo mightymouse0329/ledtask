@@ -51,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     applications/buzzer_task.c
     applications/imu_task.c
     applications/bmi088_simple.c
+    applications/remote_control.c
 )
 
 # Add include paths
