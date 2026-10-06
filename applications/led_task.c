@@ -1,18 +1,16 @@
+#include "application_tasks.h"
 #include "cmsis_os.h"
 #include "tim.h"
 
-static volatile int heartbeat = 0;
+static volatile uint32_t heartbeat = 0;
 
-void app_heartbeat(void)
-{
-  heartbeat++;
-}
+void app_heartbeat(void) { heartbeat++; }
 
-static void led_set(int color, int brightness)
+static void led_set(int color, int brightness_percent)
 {
   int pulse;
 
-  pulse = 65536 * brightness / 100;
+  pulse = 65536 * brightness_percent / 100;
 
   __HAL_TIM_SET_COMPARE(&htim5, TIM_CHANNEL_1, 0);
   __HAL_TIM_SET_COMPARE(&htim5, TIM_CHANNEL_2, 0);
@@ -29,10 +27,10 @@ static void led_set(int color, int brightness)
 
 static void check_heartbeat(void)
 {
-  static int previous = 0;
-  static int last_check = 0;
+  static uint32_t previous = 0;
+  static uint32_t last_check_ms = 0;
 
-  if (HAL_GetTick() - last_check < 500) {
+  if (HAL_GetTick() - last_check_ms < 500) {
     return;
   }
 
@@ -42,13 +40,13 @@ static void check_heartbeat(void)
   }
 
   previous = heartbeat;
-  last_check = HAL_GetTick();
+  last_check_ms = HAL_GetTick();
 }
 
-void led_task(void const *argument)
+void led_task(void const * argument)
 {
   int color;
-  int brightness;
+  int brightness_percent;
   (void)argument;
 
   __HAL_TIM_SET_AUTORELOAD(&htim5, 65535);
@@ -59,15 +57,15 @@ void led_task(void const *argument)
 
   while (1) {
     for (color = 0; color < 3; color++) {
-      for (brightness = 0; brightness <= 50; brightness++) {
+      for (brightness_percent = 0; brightness_percent <= 50; brightness_percent++) {
         check_heartbeat();
-        led_set(color, brightness);
+        led_set(color, brightness_percent);
         osDelay(30);
       }
 
-      for (brightness = 49; brightness >= 0; brightness--) {
+      for (brightness_percent = 49; brightness_percent >= 0; brightness_percent--) {
         check_heartbeat();
-        led_set(color, brightness);
+        led_set(color, brightness_percent);
         osDelay(30);
       }
     }

@@ -1,8 +1,14 @@
 {
     "files.associations": {
-        "*.h": "c"
+        "*.h": "c",
+        "*.hpp": "cpp"
     },
     "editor.formatOnSave": true,
+    "C_Cpp.clang_format_style": "file",
+    "[cpp]": {
+        "editor.defaultFormatter": "ms-vscode.cpptools",
+        "editor.formatOnSave": true
+    },
     "[c]": {
         "editor.formatOnSave": false,
     },

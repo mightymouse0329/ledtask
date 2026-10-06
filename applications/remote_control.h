@@ -3,14 +3,13 @@
 
 #include <stdint.h>
 
-#define RC_SWITCH_UP 1
-#define RC_SWITCH_DOWN 2
-#define RC_SWITCH_MID 3
-#define RC_MODE_DISABLED 0
-#define RC_MODE_LINK 1
-#define RC_MODE_RESET 2
+#ifdef __cplusplus
+#include "control_constants.hpp"
+extern "C" {
+#endif
 
-typedef struct {
+typedef struct
+{
   int16_t channel[4];
   uint8_t right_switch;
   uint8_t left_switch;
@@ -23,6 +22,10 @@ typedef struct {
 
 void remote_start(void);
 void remote_service(void);
-void remote_get_state(RemoteState *state);
+void remote_get_state(RemoteState * state);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

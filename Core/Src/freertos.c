@@ -26,6 +26,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "remote_control.h"
+#include "motor_control.h"
+#include "application_tasks.h"
 
 /* USER CODE END Includes */
 
@@ -54,8 +56,7 @@ osThreadId buzzertaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-void app_heartbeat(void);
-void imu_task(void const *argument);
+
 
 /* USER CODE END FunctionPrototypes */
 
@@ -145,6 +146,7 @@ void StartDefaultTask(void const * argument)
   for(;;)
   {
     remote_service();
+    motor_service();
     app_heartbeat();
     osDelay(20);
   }

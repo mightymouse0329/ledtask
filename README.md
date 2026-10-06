@@ -1,6 +1,6 @@
 # robomaster-stage-one：RoboMaster C 板基础功能
 
-本工程实现启动提示音、RGB 渐变流水灯、任务心跳监测，以及 BMI088 三轴加速度和三轴角速度的串口输出。
+本工程实现启动提示音、RGB 渐变流水灯、任务心跳监测、BMI088 三轴数据输出、DT7 遥控器解析，以及 GM6020 的 CAN 反馈与零电压指令阶段。电机联动与复位尚未实现。
 
 工程采用 STM32CubeMX 配置外设，使用 STM32 HAL 和 FreeRTOS，LED 与蜂鸣器任务采用基础 C 语法直接控制 PWM，在 `applications` 中编写应用任务，通过 CMake 构建。
 
@@ -15,7 +15,7 @@
 
 这里的流水灯是板载 RGB 灯按颜色依次渐亮、渐暗的效果。蜂鸣器在上电、复位或烧录后程序重新运行时播放，不直接检测烧录器是否下载成功。
 
-上述为源码对应的预期行为，实际验收以开发板运行结果为准。2026-10-04 补齐 HAL 驱动后，工程的 Debug 配置、编译和链接已通过；此后修改过代码和注释，当前最新版本尚未重新编译或确认硬件运行结果。DT7 遥控器基本通信与拨杆解析已接入代码，Debug 编译通过，尚待上板验证；CAN 电机通信、实际失能、联动及复位仍待后续阶段完成。
+上述为源码对应的预期行为，实际验收以开发板运行结果为准。最新变更及编译状态见文末“2026-10-05 更新”。新增遥控器、电机功能均尚待实物验证。
 
 ## 2. 硬件与外设
 
@@ -43,7 +43,10 @@ robomaster-stage-one/
 │  ├─ led_task.c            # 渐变流水灯与心跳监测
 │  ├─ imu_task.c            # IMU 读取与串口打印任务
 │  ├─ bmi088_simple.c       # BMI088 基础 C 驱动
-│  └─ bmi088_simple.h       # BMI088 驱动接口声明
+│  ├─ bmi088_simple.h       # BMI088 驱动接口声明
+│  ├─ remote_control.cpp / remote_control.h   # DT7 接收与拨杆模式
+│  ├─ motor_control.cpp / motor_control.h    # GM6020 反馈与零指令
+│  └─ application_tasks.h   # 任务入口声明
 ├─ Core/
 │  ├─ Inc/                 # 配置及外设头文件
 │  └─ Src/
@@ -51,10 +54,12 @@ robomaster-stage-one/
 │     ├─ freertos.c        # 创建任务，默认任务更新心跳
 │     ├─ tim.c             # TIM4、TIM5 初始化
 │     ├─ spi.c             # SPI1 初始化
-│     └─ usart.c           # USART1 初始化
+│     ├─ usart.c           # USART1 打印、USART3 遥控器接收
+│     └─ can.c             # CAN1 初始化
 ├─ Drivers/                # 芯片支持与 HAL 驱动
 ├─ Middlewares/            # FreeRTOS 等组件
 ├─ sp_middleware/          # 保留的中间件代码
+├─ docs/                   # 分阶段操作指南、规范检查
 ├─ cmake/                  # 工具链与构建配置
 ├─ robomaster-stage-one.ioc             # STM32CubeMX 配置
 ├─ CMakeLists.txt          # 工程源文件和编译设置
@@ -105,10 +110,10 @@ openocd -f openocd.cfg -c "program build/Debug/robomaster-stage-one.elf verify r
 ## 5. 程序运行逻辑
 
 1. `main()` 初始化 HAL 和系统时钟。
-2. 初始化 GPIO、TIM5、TIM4、SPI1 和 USART1。
+2. 初始化 GPIO、TIM5、TIM4、SPI1、USART1、USART3 和 CAN1，并启动遥控器接收。
 3. `MX_FREERTOS_Init()` 创建默认任务、LED 任务、蜂鸣器任务和 IMU 任务。
 4. `osKernelStart()` 启动任务调度。
-5. 默认任务循环更新心跳；LED 任务显示渐变灯效；蜂鸣器任务播放一遍提示音后进入周期等待；IMU 任务初始化传感器、读取数据并通过串口发送。
+5. 默认任务循环处理遥控器、电机零指令服务并更新心跳；LED 任务显示渐变灯效；蜂鸣器任务播放一遍提示音后进入周期等待；IMU 任务初始化传感器、读取数据并通过串口发送。
 
 任务使用 `osDelay()` 等待时会让出 CPU，其他就绪任务仍可运行，所以蜂鸣器的音符间隔不会要求 LED 任务一起等待。当前 FreeRTOS 节拍配置为 1000 Hz，实际间隔还受到任务调度影响。
 
@@ -124,9 +129,9 @@ openocd -f openocd.cfg -c "program build/Debug/robomaster-stage-one.elf verify r
 
 | 修改目标 | 位置 |
 | --- | --- |
-| 提示音音调 | `applications/buzzer_task.c` 中的 `notes[]` |
+| 提示音音调 | `applications/buzzer_task.c` 中的 `notes_hz[]` |
 | 音符时长和间隔 | 蜂鸣器任务中的 `osDelay(120)`、`osDelay(60)` |
-| 蜂鸣器占空比 | `period / 10` 表示约 10% 占空比；不是线性的音量百分比 |
+| 蜂鸣器占空比 | `period_ticks / 10` 表示约 10% 占空比；不是线性的音量百分比 |
 | LED 亮度参数 | `applications/led_task.c` 中循环上限 `50`（50% 占空比）；修改时同步调整渐暗起点 `49` |
 | LED 渐变速度 | LED 任务中的 `osDelay(30)`（每步约 30 ms） |
 | 心跳超时阈值 | `check_heartbeat()` 中的 `500`（检查间隔约 500 ms） |
@@ -139,7 +144,7 @@ openocd -f openocd.cfg -c "program build/Debug/robomaster-stage-one.elf verify r
 - 当前 `robomaster-stage-one.ioc` 对 PH10 配置了上拉，但 `tim.c` 中对应初始化仍为 `GPIO_NOPULL`。重新生成可能改变这一处，应检查差异；当前实际编译使用的是源码。
 - 不要在普通任务循环里长时间忙等；根据任务需求使用合理的等待方式。
 - `build/` 为构建输出，已由 `.gitignore` 忽略。应提交源码、配置和文档。
-- 本文根据源码整理，没有在编写文档时执行新的编译或硬件测试。
+- 本文根据源码整理；编译状态见文末最新记录，未做硬件测试。
 
 ## 8. Git 版本管理
 
@@ -176,7 +181,7 @@ fix(buzzer): 修复提示音播放问题
 - `Core/Src/spi.c`、`Core/Inc/spi.h`：SPI1 初始化，2.625 MHz，模式 3（CPOL 高、CPHA 第二沿）。
 - `Core/Src/usart.c`、`Core/Inc/usart.h`：USART1 初始化，115200、8N1、无流控。
 - `applications/bmi088_simple.c`、`applications/bmi088_simple.h`：寄存器读写、软复位、芯片 ID 与配置检查、数据换算。
-- `applications/imu_task.c`：创建后初始化 IMU，约每 100 ms 读取并发送一行文本。
+- `applications/imu_task.cpp`：创建后初始化 IMU，约每 100 ms 读取并发送一行文本。
 - `main.c` 初始化 SPI1 和 USART1；`freertos.c` 在 USER CODE 的 RTOS_THREADS 区域创建 IMU 任务，栈为 1024 个字（4096 字节）。
 
 两个传感器共用 SPI1，但片选不同：PA4 为加速度计片选，PB0 为陀螺仪片选；PB3=SCK、PB4=MISO、PA7=MOSI。板载连线已存在，无需自行接 IMU 引脚。采用轮询，无需配置 DMA 或传感器外部中断。
@@ -231,8 +236,27 @@ ACC X=0.012 Y=-0.025 Z=9.800 | GYRO X=0.061 Y=-0.122 Z=0.000
 
 ## 11. 遥控器与电机任务进度
 
-第一步已接入 DT7/DR16 的 DBUS 数据接收，通过现有串口输出摇杆和拨杆状态。本阶段不会发送电机驱动命令；实际失能、姿态联动、手动电机联动和复位尚待后续实现。
+第一步接入 DT7/DR16 的 DBUS 接收和拨杆解析。第二步接入 GM6020 CAN 反馈并始终发送零电压指令；实际无力状态仍需硬件确认。姿态联动、手动电机联动和复位尚未实现。
 
 接线、串口观察步骤、断联处理及后续计划见 [第一步：遥控器基本通信](docs/remote_step_one.md)。
 
 2026-10-04：遥控器基本通信阶段完整 Debug 编译和链接通过，未出现编译警告；尚未烧录或验证遥控器实物。后续复位方案已确定为上电前手动对齐三个箭头，再记录初始零位。
+
+
+## 12. 2026-10-05 更新：CAN 通信与规范整理
+
+- 固定 CAN1、A 电机 ID1、B 电机 ID2、1 Mbit/s、电压指令 0x1FF，所有拨杆状态只发送零值。中档/上档不会使电机跟随或复位。
+- 每隔至少 500 ms 追加 CAN 摘要及电机位置、转速、电流原始值、温度。离线旧值标为 OFFLINE。零电压不保证满足“无力”验收，需核实电机实际控制模式。
+- [第二步说明与到校操作](docs/motor_step_two.md)
+- [代码规范检查与仓库事项](docs/code_style_review.md)
+- 应用代码继续使用基础 C，统一格式和部分变量名，增加任务接口头文件；HAL/生成代码保留原接口名称。
+- 本次 Debug 配置、编译和链接通过，编译输出无警告；Flash 使用 49540 字节，RAM 使用 19264 字节。应用文件的 clang-format 检查通过。未烧录、无实物验证；CubeMX 重新生成也未验证。
+
+
+## 13. 2026-10-06：constexpr 与格式配置
+
+遥控器、电机和串口打印实现改为 .cpp，按 C++17 编译，仍使用普通函数和结构体。LED、蜂鸣器、BMI088 与 CubeMX 外设代码继续按 C 编译。协议常量集中在 applications/control_constants.hpp，使用 constexpr int；共享 .h 接口通过 extern "C" 保持 C/C++ 调用兼容。旧章节的“基础 C”描述对应此前阶段。
+
+工程根目录已有 .clang-format，保留 PDF 的配置。VS Code 的 C++ 保存格式化明确使用 C/C++ 扩展和该文件，.hpp 按 C++ 识别。C 文件按 PDF 建议关闭保存时格式化，需要时手动格式化应用文件。
+
+编译状态：本次 Debug 配置、编译和链接通过，无编译警告；Flash 50196 字节，RAM 19264 字节。未做硬件验证。

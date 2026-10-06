@@ -49,9 +49,10 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     applications/led_task.c
     applications/buzzer_task.c
-    applications/imu_task.c
+    applications/imu_task.cpp
     applications/bmi088_simple.c
-    applications/remote_control.c
+    applications/remote_control.cpp
+    applications/motor_control.cpp
 )
 
 # Add include paths
