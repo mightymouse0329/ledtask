@@ -50,6 +50,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     applications/led_task.c
     applications/buzzer_task.c
     applications/imu_task.cpp
+    applications/imu_yaw.cpp
     applications/bmi088_simple.c
     applications/remote_control.cpp
     applications/motor_control.cpp

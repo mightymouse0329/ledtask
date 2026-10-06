@@ -123,8 +123,12 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_THREADS */
 
-  osThreadDef(imutask, imu_task, osPriorityLow, 0, 1024);
+  osThreadDef(imutask, imu_task, osPriorityAboveNormal, 0, 512);
   if (osThreadCreate(osThread(imutask), NULL) == NULL) {
+    Error_Handler();
+  }
+  osThreadDef(telemetrytask, telemetry_task, osPriorityLow, 0, 1024);
+  if (osThreadCreate(osThread(telemetrytask), NULL) == NULL) {
     Error_Handler();
   }
   /* add threads, ... */

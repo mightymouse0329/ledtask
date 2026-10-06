@@ -4,6 +4,7 @@
 #include "application_tasks.h"
 #include "bmi088_simple.h"
 #include "cmsis_os.h"
+#include "imu_yaw.hpp"
 #include "motor_control.h"
 #include "motor_position.hpp"
 #include "remote_control.h"
@@ -90,45 +91,94 @@ static void print_motors(void)
   }
 }
 
+static const char * imu_state_name(int state)
+{
+  if (state == IMU_WARMUP) return "WARMUP";
+  if (state == IMU_CALIBRATING) return "CALIBRATING";
+  if (state == IMU_READY) return "READY";
+  if (state == IMU_FAULT) return "FAULT";
+  return "WAIT";
+}
+
+static const char * imu_reason_name(int reason)
+{
+  if (reason == IMU_REASON_SPI) return "SPI";
+  if (reason == IMU_REASON_GAP) return "GAP";
+  if (reason == IMU_REASON_LEVEL) return "LEVEL_OR_ACCEL";
+  if (reason == IMU_REASON_RANGE) return "RANGE";
+  return "NONE";
+}
+
+static void print_imu(void)
+{
+  static uint32_t last_print_ms;
+  ImuYawState state;
+  char text[256];
+  if (HAL_GetTick() - last_print_ms < 500) return;
+  last_print_ms = HAL_GetTick();
+  imu_yaw_get_state(&state);
+  const uint32_t age_ms = HAL_GetTick() - state.last_sample_ms;
+  snprintf(
+    text, sizeof(text),
+    "IMU %s valid=%u reason=%s level=%u io=%u cal=%lu/%d restarts=%lu init_error=%u\r\n",
+    imu_state_name(state.state), (unsigned int)state.valid, imu_reason_name(state.reason),
+    (unsigned int)state.level, (unsigned int)state.io_ok, (unsigned long)state.calibration_samples,
+    IMU_CALIBRATION_SAMPLES, (unsigned long)state.calibration_restarts,
+    (unsigned int)state.init_error);
+  send_text(text);
+  snprintf(
+    text, sizeof(text),
+    "YAW t_ms=%lu deg=%.4f rate_deg_s=%.4f bias_z_deg_s=%.4f dt_ms=%lu max_dt_ms=%lu age_ms=%lu "
+    "samples=%lu io_errors=%lu gaps=%lu\r\n",
+    (unsigned long)state.last_sample_ms, state.yaw_rad / IMU_DEG_TO_RAD, state.corrected_z_deg_s,
+    state.bias_deg_s[2], (unsigned long)state.interval_ms, (unsigned long)state.max_interval_ms,
+    (unsigned long)age_ms, (unsigned long)state.samples, (unsigned long)state.io_errors,
+    (unsigned long)state.gap_events);
+  send_text(text);
+  snprintf(
+    text, sizeof(text), "ACC X=%.3f Y=%.3f Z=%.3f norm=%.3f | GYRO X=%.3f Y=%.3f Z=%.3f\r\n",
+    state.acceleration_mps2[0], state.acceleration_mps2[1], state.acceleration_mps2[2],
+    state.acceleration_norm_mps2, state.angular_velocity_deg_s[0], state.angular_velocity_deg_s[1],
+    state.angular_velocity_deg_s[2]);
+  send_text(text);
+}
+
+void telemetry_task(void const * argument)
+{
+  (void)argument;
+  send_text("IMU planar yaw: keep board face up, level and still during calibration.\r\n");
+  while (1) {
+    print_remote();
+    print_motors();
+    print_imu();
+    osDelay(20);
+  }
+}
+
 void imu_task(void const * argument)
 {
   float acceleration_mps2[3];
   float angular_velocity_deg_s[3];
-  char text[192];
-  int error;
   int ready = 0;
-  int length;
+  int error;
   (void)argument;
-
   while (1) {
-    print_remote();
-    print_motors();
-    if (ready == 0) {
+    if (!ready) {
       error = bmi088_init();
-      if (error != 0) {
-        snprintf(
-          text, sizeof(text),
-          "BMI088 init error=%d (1:SPI 2:ACC_ID 3:GYRO_ID 4:ACC_CFG 5:GYRO_CFG)\r\n", error);
-        send_text(text);
+      if (error) {
+        imu_yaw_io_error(error);
         osDelay(1000);
         continue;
       }
+      imu_yaw_begin(HAL_GetTick());
       ready = 1;
-      send_text("BMI088 OK. ACC: m/s^2; GYRO: deg/s; axes: X,Y,Z\r\n");
     }
-
     if (bmi088_read(acceleration_mps2, angular_velocity_deg_s)) {
-      length = snprintf(
-        text, sizeof(text), "ACC X=%.3f Y=%.3f Z=%.3f | GYRO X=%.3f Y=%.3f Z=%.3f\r\n",
-        acceleration_mps2[0], acceleration_mps2[1], acceleration_mps2[2], angular_velocity_deg_s[0],
-        angular_velocity_deg_s[1], angular_velocity_deg_s[2]);
-      if (length > 0 && length < (int)sizeof(text)) {
-        send_text(text);
-      }
+      imu_yaw_update(acceleration_mps2, angular_velocity_deg_s, HAL_GetTick());
     } else {
-      send_text("BMI088 SPI read error; retrying init\r\n");
+      imu_yaw_io_error(0);
       ready = 0;
     }
-    osDelay(100);
+    osDelay(IMU_SAMPLE_PERIOD_MS);
   }
 }
