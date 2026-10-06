@@ -71,6 +71,12 @@ static void print_motors(void)
       (int)state.motor[index].current_raw, (unsigned int)state.motor[index].temperature_deg_c,
       (unsigned long)state.motor[index].frames);
     if (length > 0 && length < (int)sizeof(text)) send_text(text);
+    length = snprintf(
+      text, sizeof(text), "ANGLE %c valid=%u single_rad=%.4f relative_rad=%.4f counts=%ld\r\n",
+      'A' + index, (unsigned int)state.motor[index].angle_valid,
+      state.motor[index].single_angle_rad, state.motor[index].relative_angle_rad,
+      (long)state.motor[index].relative_counts);
+    if (length > 0 && length < (int)sizeof(text)) send_text(text);
   }
 }
 

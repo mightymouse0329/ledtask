@@ -11,6 +11,10 @@ extern "C" {
 typedef struct
 {
   uint16_t encoder_raw;
+  int32_t relative_counts;
+  float single_angle_rad;
+  float relative_angle_rad;
+  uint8_t angle_valid;
   int16_t speed_rpm;
   int16_t current_raw;
   uint8_t temperature_deg_c;

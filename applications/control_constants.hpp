@@ -12,4 +12,9 @@ constexpr int MOTOR_B_ID = 2;
 constexpr int MOTOR_FEEDBACK_TIMEOUT_MS = 100;
 constexpr int MOTOR_COMMAND_ID = 0x1FF;
 
+constexpr int MOTOR_ENCODER_COUNTS = 8192;
+constexpr int MOTOR_ENCODER_HALF_COUNTS = MOTOR_ENCODER_COUNTS / 2;
+constexpr int MOTOR_ANGLE_MAX_GAP_MS = 10;
+constexpr float MOTOR_TWO_PI = 6.28318530718f;
+
 #endif

@@ -72,6 +72,35 @@ static int16_t read_signed_value(const uint8_t * data)
   return (int16_t)value;
 }
 
+static void update_motor_angle(int index, uint16_t encoder_raw, uint32_t now_ms)
+{
+  int delta;
+  int32_t total;
+  if (!motor_state.motor[index].received) {
+    motor_state.motor[index].relative_counts = 0;
+    motor_state.motor[index].angle_valid = 1;
+    return;
+  }
+  if (!motor_state.motor[index].angle_valid) return;
+  if (now_ms - motor_state.motor[index].last_feedback_ms >= MOTOR_ANGLE_MAX_GAP_MS) {
+    motor_state.motor[index].angle_valid = 0;
+    return;
+  }
+  delta = (int)encoder_raw - (int)motor_state.motor[index].encoder_raw;
+  if (delta == MOTOR_ENCODER_HALF_COUNTS || delta == -MOTOR_ENCODER_HALF_COUNTS) {
+    motor_state.motor[index].angle_valid = 0;
+    return;
+  }
+  if (delta > MOTOR_ENCODER_HALF_COUNTS) delta -= MOTOR_ENCODER_COUNTS;
+  if (delta < -MOTOR_ENCODER_HALF_COUNTS) delta += MOTOR_ENCODER_COUNTS;
+  total = motor_state.motor[index].relative_counts;
+  if ((delta > 0 && total > INT32_MAX - delta) || (delta < 0 && total < INT32_MIN - delta)) {
+    motor_state.motor[index].angle_valid = 0;
+    return;
+  }
+  motor_state.motor[index].relative_counts = total + delta;
+}
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
 {
   CAN_RxHeaderTypeDef header;
@@ -100,15 +129,17 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
       continue;
     }
     encoder_raw = ((uint16_t)data[0] << 8) | data[1];
-    if (encoder_raw > 8191) {
+    if (encoder_raw >= MOTOR_ENCODER_COUNTS) {
       motor_state.invalid_frames++;
       continue;
     }
+    uint32_t now_ms = HAL_GetTick();
+    update_motor_angle(index, encoder_raw, now_ms);
     motor_state.motor[index].encoder_raw = encoder_raw;
     motor_state.motor[index].speed_rpm = read_signed_value(&data[2]);
     motor_state.motor[index].current_raw = read_signed_value(&data[4]);
     motor_state.motor[index].temperature_deg_c = data[6];
-    motor_state.motor[index].last_feedback_ms = HAL_GetTick();
+    motor_state.motor[index].last_feedback_ms = now_ms;
     motor_state.motor[index].received = 1;
     motor_state.motor[index].frames++;
   }
@@ -117,6 +148,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef * hcan)
 {
   if (hcan->Instance != CAN1) return;
+  if (HAL_CAN_GetError(hcan) & (HAL_CAN_ERROR_RX_FOV0 | HAL_CAN_ERROR_BOF)) {
+    for (int index = 0; index < 2; index++) {
+      if (motor_state.motor[index].received) motor_state.motor[index].angle_valid = 0;
+    }
+  }
   motor_state.error_events++;
   motor_state.error_flags |= HAL_CAN_GetError(hcan);
 }
@@ -134,6 +170,8 @@ void motor_get_state(MotorState * state)
   state->error_events = motor_state.error_events;
   state->error_flags = motor_state.error_flags;
   for (index = 0; index < 2; index++) {
+    state->motor[index].relative_counts = motor_state.motor[index].relative_counts;
+    state->motor[index].angle_valid = motor_state.motor[index].angle_valid;
     state->motor[index].encoder_raw = motor_state.motor[index].encoder_raw;
     state->motor[index].speed_rpm = motor_state.motor[index].speed_rpm;
     state->motor[index].current_raw = motor_state.motor[index].current_raw;
@@ -147,6 +185,13 @@ void motor_get_state(MotorState * state)
   state->bus_off = (hcan1.Instance->ESR & CAN_ESR_BOFF) != 0;
   taskEXIT_CRITICAL();
   for (index = 0; index < 2; index++) {
+    state->motor[index].single_angle_rad =
+      state->motor[index].encoder_raw * (MOTOR_TWO_PI / MOTOR_ENCODER_COUNTS);
+    state->motor[index].relative_angle_rad =
+      state->motor[index].relative_counts * (MOTOR_TWO_PI / MOTOR_ENCODER_COUNTS);
+    state->motor[index].angle_valid =
+      state->motor[index].angle_valid && state->motor[index].received &&
+      now_ms - state->motor[index].last_feedback_ms < MOTOR_ANGLE_MAX_GAP_MS;
     state->motor[index].online =
       state->motor[index].received &&
       now_ms - state->motor[index].last_feedback_ms < MOTOR_FEEDBACK_TIMEOUT_MS;
