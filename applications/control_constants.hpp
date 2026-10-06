@@ -30,4 +30,19 @@ constexpr int MOTOR_POSITION_OUTPUT_LIMIT_RAW = 1500;
 constexpr int MOTOR_POSITION_MAX_TEMP_DEG_C = 60;
 constexpr int MOTOR_POSITION_MAX_INTERVAL_MS = 50;
 
+constexpr bool MOTOR_LINK_ENABLE = false;
+constexpr int MOTOR_A_DIRECTION = 1;
+constexpr int MOTOR_B_DIRECTION = 1;
+constexpr float MOTOR_LINK_TRAVEL_LIMIT_RAD = MOTOR_TWO_PI;
+constexpr float MOTOR_LINK_MAX_ERROR_RAD = 0.523598776f;
+static_assert(!(MOTOR_POSITION_ENABLE && MOTOR_LINK_ENABLE), "Select only one motion experiment");
+static_assert(
+  MOTOR_A_ID >= 1 && MOTOR_A_ID <= 4 && MOTOR_B_ID >= 1 && MOTOR_B_ID <= 4 &&
+    MOTOR_A_ID != MOTOR_B_ID,
+  "Motor IDs must be different and in the 0x1FF group");
+static_assert(
+  (MOTOR_A_DIRECTION == 1 || MOTOR_A_DIRECTION == -1) &&
+    (MOTOR_B_DIRECTION == 1 || MOTOR_B_DIRECTION == -1),
+  "Direction must be 1 or -1");
+
 #endif

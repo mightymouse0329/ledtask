@@ -6,6 +6,7 @@
 #include "cmsis_os.h"
 #include "imu_yaw.hpp"
 #include "motor_control.h"
+#include "motor_link.hpp"
 #include "motor_position.hpp"
 #include "remote_control.h"
 #include "usart.h"
@@ -52,6 +53,7 @@ static void print_motors(void)
   static uint32_t last_print_ms;
   MotorState state;
   PositionState position;
+  LinkState link;
   char text[192];
   int index;
   int length;
@@ -59,6 +61,7 @@ static void print_motors(void)
   last_print_ms = HAL_GetTick();
   motor_get_state(&state);
   motor_position_get_state(&position);
+  motor_link_get_state(&link);
   length = snprintf(
     text, sizeof(text),
     "CAN started=%u bus_off=%u queued=%lu skipped=%lu errors=%lu flags=0x%lX bad=%lu\r\n",
@@ -72,6 +75,16 @@ static void print_motors(void)
     (unsigned int)MOTOR_POSITION_ENABLE, (unsigned int)position.active,
     (unsigned int)position.ready, (unsigned int)position.fault, position.target_rad,
     position.reference_rad, (int)position.output_raw);
+  if (length > 0 && length < (int)sizeof(text)) send_text(text);
+  length = snprintf(
+    text, sizeof(text), "LINK enabled=%u active=%u ready=%u fault=%u ratio=%.1f yaw_rad=%.3f\r\n",
+    (unsigned int)MOTOR_LINK_ENABLE, (unsigned int)link.active, (unsigned int)link.ready,
+    (unsigned int)link.fault, link.ratio, link.yaw_change_rad);
+  if (length > 0 && length < (int)sizeof(text)) send_text(text);
+  length = snprintf(
+    text, sizeof(text), "LINK A target=%.3f ref=%.3f out=%d | B target=%.3f ref=%.3f out=%d\r\n",
+    link.target_rad[0], link.reference_rad[0], (int)link.output_raw[0], link.target_rad[1],
+    link.reference_rad[1], (int)link.output_raw[1]);
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   for (index = 0; index < 2; index++) {
     length = snprintf(

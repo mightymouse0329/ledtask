@@ -2,6 +2,7 @@
 
 #include "FreeRTOS.h"
 #include "can.h"
+#include "motor_link.hpp"
 #include "motor_position.hpp"
 #include "task.h"
 
@@ -38,7 +39,8 @@ void motor_service(void)
   static uint8_t attempted;
   MotorState snapshot;
   RemoteState remote;
-  int16_t command;
+  ImuYawState imu;
+  int16_t commands[2] = {0};
   uint16_t encoded_command;
   CAN_TxHeaderTypeDef header = {};
   uint8_t data[8] = {0};
@@ -55,16 +57,25 @@ void motor_service(void)
 
   motor_get_state(&snapshot);
   remote_get_state(&remote);
-  command = motor_position_update(&snapshot, &remote, HAL_GetTick());
+  imu_yaw_get_state(&imu);
+  motor_link_update(&snapshot, &remote, &imu, HAL_GetTick(), commands);
+  if (!MOTOR_LINK_ENABLE) {
+    commands[0] = motor_position_update(&snapshot, &remote, HAL_GetTick());
+  }
   if ((hcan1.Instance->ESR & CAN_ESR_BOFF) || HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) != 3) {
     motor_position_stop();
+    if (MOTOR_LINK_ENABLE) motor_link_stop(LINK_FAULT_CAN);
     HAL_CAN_AbortTxRequest(&hcan1, CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
     motor_state.skipped_frames++;
     return;
   }
-  encoded_command = (uint16_t)command;
-  data[0] = (uint8_t)(encoded_command >> 8);
-  data[1] = (uint8_t)encoded_command;
+  const int motor_ids[2] = {MOTOR_A_ID, MOTOR_B_ID};
+  for (int index = 0; index < 2; index++) {
+    int offset = (motor_ids[index] - 1) * 2;
+    encoded_command = (uint16_t)commands[index];
+    data[offset] = (uint8_t)(encoded_command >> 8);
+    data[offset + 1] = (uint8_t)encoded_command;
+  }
   header.StdId = MOTOR_COMMAND_ID;
   header.IDE = CAN_ID_STD;
   header.RTR = CAN_RTR_DATA;
@@ -74,6 +85,7 @@ void motor_service(void)
     motor_state.queued_frames++;
   } else {
     motor_position_stop();
+    if (MOTOR_LINK_ENABLE) motor_link_stop(LINK_FAULT_CAN);
     motor_state.skipped_frames++;
   }
 }
