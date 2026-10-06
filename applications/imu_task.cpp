@@ -7,7 +7,8 @@
 #include "imu_yaw.hpp"
 #include "motor_control.h"
 #include "motor_link.hpp"
-#include "motor_position.hpp"
+#include "motor_manual.hpp"
+#include "motor_reset.hpp"
 #include "remote_control.h"
 #include "usart.h"
 
@@ -27,7 +28,7 @@ static void print_remote(void)
 {
   static uint32_t last_print_ms;
   RemoteState state;
-  char text[192];
+  char text[256];
   const char * mode = "DISABLED";
   const char * ratio = "0.5";
   int length;
@@ -52,16 +53,18 @@ static void print_motors(void)
 {
   static uint32_t last_print_ms;
   MotorState state;
-  PositionState position;
+  ResetState reset;
   LinkState link;
-  char text[192];
+  ManualState manual;
+  char text[256];
   int index;
   int length;
   if (HAL_GetTick() - last_print_ms < 500) return;
   last_print_ms = HAL_GetTick();
   motor_get_state(&state);
-  motor_position_get_state(&position);
+  motor_reset_get_state(&reset);
   motor_link_get_state(&link);
+  motor_manual_get_state(&manual);
   length = snprintf(
     text, sizeof(text),
     "CAN started=%u bus_off=%u queued=%lu skipped=%lu errors=%lu flags=0x%lX bad=%lu\r\n",
@@ -71,20 +74,34 @@ static void print_motors(void)
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   length = snprintf(
     text, sizeof(text),
-    "POSITION enabled=%u active=%u ready=%u fault=%u target_rad=%.3f ref_rad=%.3f out_raw=%d\r\n",
-    (unsigned int)MOTOR_POSITION_ENABLE, (unsigned int)position.active,
-    (unsigned int)position.ready, (unsigned int)position.fault, position.target_rad,
-    position.reference_rad, (int)position.output_raw);
+    "CONTROL unlocked=%u mode=%u calibrated=%u hold_ms=%lu ready=%u fault=%u\r\n",
+    (unsigned int)link.unlocked, (unsigned int)link.mode, (unsigned int)reset.calibrated,
+    (unsigned long)link.unlock_ms, (unsigned int)link.ready, (unsigned int)link.fault);
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   length = snprintf(
-    text, sizeof(text), "LINK enabled=%u active=%u ready=%u fault=%u ratio=%.1f yaw_rad=%.3f\r\n",
-    (unsigned int)MOTOR_LINK_ENABLE, (unsigned int)link.active, (unsigned int)link.ready,
+    text, sizeof(text),
+    "RESET active=%u done=%u settled_ms=%lu zero_yaw=%.3f zero_A=%.3f zero_B=%.3f\r\n",
+    (unsigned int)reset.active, (unsigned int)reset.done, (unsigned long)reset.settled_ms,
+    reset.zero_yaw_rad, reset.zero_motor_rad[0], reset.zero_motor_rad[1]);
+  if (length > 0 && length < (int)sizeof(text)) send_text(text);
+  length = snprintf(
+    text, sizeof(text), "LINK unlocked=%u active=%u ready=%u fault=%u ratio=%.1f yaw_rad=%.3f\r\n",
+    (unsigned int)link.unlocked, (unsigned int)link.active, (unsigned int)link.ready,
     (unsigned int)link.fault, link.ratio, link.yaw_change_rad);
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   length = snprintf(
     text, sizeof(text), "LINK A target=%.3f ref=%.3f out=%d | B target=%.3f ref=%.3f out=%d\r\n",
     link.target_rad[0], link.reference_rad[0], (int)link.output_raw[0], link.target_rad[1],
     link.reference_rad[1], (int)link.output_raw[1]);
+  if (length > 0 && length < (int)sizeof(text)) send_text(text);
+  length = snprintf(
+    text, sizeof(text),
+    "MANUAL enabled=%u ready=%u candidate=%u source=%u wait_ms=%lu still_ms=%lu yaw_ref=%.3f "
+    "takes=%lu releases=%lu conflicts=%lu\r\n",
+    (unsigned int)(link.unlocked && link.mode == RC_MODE_LINK), (unsigned int)manual.ready,
+    (unsigned int)manual.candidate, (unsigned int)manual.source, (unsigned long)manual.candidate_ms,
+    (unsigned long)manual.still_ms, link.yaw_reference_rad, (unsigned long)manual.takeovers,
+    (unsigned long)manual.releases, (unsigned long)manual.conflicts);
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   for (index = 0; index < 2; index++) {
     length = snprintf(

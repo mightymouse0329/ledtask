@@ -3,7 +3,6 @@
 #include "FreeRTOS.h"
 #include "can.h"
 #include "motor_link.hpp"
-#include "motor_position.hpp"
 #include "task.h"
 
 static volatile MotorState motor_state;
@@ -59,12 +58,8 @@ void motor_service(void)
   remote_get_state(&remote);
   imu_yaw_get_state(&imu);
   motor_link_update(&snapshot, &remote, &imu, HAL_GetTick(), commands);
-  if (!MOTOR_LINK_ENABLE) {
-    commands[0] = motor_position_update(&snapshot, &remote, HAL_GetTick());
-  }
   if ((hcan1.Instance->ESR & CAN_ESR_BOFF) || HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) != 3) {
-    motor_position_stop();
-    if (MOTOR_LINK_ENABLE) motor_link_stop(LINK_FAULT_CAN);
+    motor_link_stop(LINK_FAULT_CAN);
     HAL_CAN_AbortTxRequest(&hcan1, CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
     motor_state.skipped_frames++;
     return;
@@ -84,8 +79,7 @@ void motor_service(void)
   if (HAL_CAN_AddTxMessage(&hcan1, &header, data, &mailbox) == HAL_OK) {
     motor_state.queued_frames++;
   } else {
-    motor_position_stop();
-    if (MOTOR_LINK_ENABLE) motor_link_stop(LINK_FAULT_CAN);
+    motor_link_stop(LINK_FAULT_CAN);
     motor_state.skipped_frames++;
   }
 }

@@ -56,6 +56,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     applications/motor_control.cpp
     applications/motor_position.cpp
     applications/motor_link.cpp
+    applications/motor_manual.cpp
+    applications/motor_reset.cpp
 )
 
 # Add include paths
