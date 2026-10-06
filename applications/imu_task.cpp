@@ -5,6 +5,7 @@
 #include "bmi088_simple.h"
 #include "cmsis_os.h"
 #include "motor_control.h"
+#include "motor_position.hpp"
 #include "remote_control.h"
 #include "usart.h"
 
@@ -49,18 +50,27 @@ static void print_motors(void)
 {
   static uint32_t last_print_ms;
   MotorState state;
+  PositionState position;
   char text[192];
   int index;
   int length;
   if (HAL_GetTick() - last_print_ms < 500) return;
   last_print_ms = HAL_GetTick();
   motor_get_state(&state);
+  motor_position_get_state(&position);
   length = snprintf(
     text, sizeof(text),
-    "CAN started=%u bus_off=%u ZERO_ONLY queued=%lu skipped=%lu errors=%lu flags=0x%lX bad=%lu\r\n",
+    "CAN started=%u bus_off=%u queued=%lu skipped=%lu errors=%lu flags=0x%lX bad=%lu\r\n",
     (unsigned int)state.started, (unsigned int)state.bus_off, (unsigned long)state.queued_frames,
     (unsigned long)state.skipped_frames, (unsigned long)state.error_events,
     (unsigned long)state.error_flags, (unsigned long)state.invalid_frames);
+  if (length > 0 && length < (int)sizeof(text)) send_text(text);
+  length = snprintf(
+    text, sizeof(text),
+    "POSITION enabled=%u active=%u ready=%u fault=%u target_rad=%.3f ref_rad=%.3f out_raw=%d\r\n",
+    (unsigned int)MOTOR_POSITION_ENABLE, (unsigned int)position.active,
+    (unsigned int)position.ready, (unsigned int)position.fault, position.target_rad,
+    position.reference_rad, (int)position.output_raw);
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   for (index = 0; index < 2; index++) {
     length = snprintf(

@@ -53,6 +53,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     applications/bmi088_simple.c
     applications/remote_control.cpp
     applications/motor_control.cpp
+    applications/motor_position.cpp
 )
 
 # Add include paths

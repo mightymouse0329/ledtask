@@ -2,6 +2,7 @@
 
 #include "FreeRTOS.h"
 #include "can.h"
+#include "motor_position.hpp"
 #include "task.h"
 
 static volatile MotorState motor_state;
@@ -35,6 +36,10 @@ void motor_service(void)
 {
   static uint32_t last_attempt_ms;
   static uint8_t attempted;
+  MotorState snapshot;
+  RemoteState remote;
+  int16_t command;
+  uint16_t encoded_command;
   CAN_TxHeaderTypeDef header = {};
   uint8_t data[8] = {0};
   uint32_t mailbox;
@@ -48,11 +53,18 @@ void motor_service(void)
     if (!motor_state.started) return;
   }
 
-  /* This stage sends zero voltage only, regardless of remote switch positions. */
-  if ((hcan1.Instance->ESR & CAN_ESR_BOFF) || HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) == 0) {
+  motor_get_state(&snapshot);
+  remote_get_state(&remote);
+  command = motor_position_update(&snapshot, &remote, HAL_GetTick());
+  if ((hcan1.Instance->ESR & CAN_ESR_BOFF) || HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) != 3) {
+    motor_position_stop();
+    HAL_CAN_AbortTxRequest(&hcan1, CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
     motor_state.skipped_frames++;
     return;
   }
+  encoded_command = (uint16_t)command;
+  data[0] = (uint8_t)(encoded_command >> 8);
+  data[1] = (uint8_t)encoded_command;
   header.StdId = MOTOR_COMMAND_ID;
   header.IDE = CAN_ID_STD;
   header.RTR = CAN_RTR_DATA;
@@ -61,6 +73,7 @@ void motor_service(void)
   if (HAL_CAN_AddTxMessage(&hcan1, &header, data, &mailbox) == HAL_OK) {
     motor_state.queued_frames++;
   } else {
+    motor_position_stop();
     motor_state.skipped_frames++;
   }
 }
