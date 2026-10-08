@@ -49,6 +49,28 @@ static void print_remote(void)
     state.channel[2], state.channel[3], (unsigned long)state.frames, (unsigned long)state.errors);
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
 }
+static void print_remote_diagnostic(void)
+{
+  static uint32_t last_print_ms;
+  RemoteDiagnostic state;
+  char text[256];
+  if (HAL_GetTick() - last_print_ms < 1000) return;
+  last_print_ms = HAL_GetTick();
+  remote_get_diagnostic(&state);
+  int length = snprintf(
+    text, sizeof(text),
+    "RCDIAG events=%lu bytes=%lu size=%lu len_bad=%lu decode_bad=%lu uart_bad=%lu start_bad=%lu "
+    "last_uart=0x%lX start=%lu\r\n",
+    (unsigned long)state.events, (unsigned long)state.bytes, (unsigned long)state.last_size,
+    (unsigned long)state.length_errors, (unsigned long)state.decode_errors,
+    (unsigned long)state.uart_errors, (unsigned long)state.start_errors,
+    (unsigned long)state.last_uart_error, (unsigned long)state.start_status);
+  if (length > 0 && length < (int)sizeof(text)) send_text(text);
+  length = snprintf(text, sizeof(text), "RCRX irq=%lu buffered=%lu\r\n",
+                    (unsigned long)state.irq_count, (unsigned long)state.buffered_bytes);
+  if (length > 0 && length < (int)sizeof(text)) send_text(text);
+}
+
 static void print_motors(void)
 {
   static uint32_t last_print_ms;
@@ -74,9 +96,9 @@ static void print_motors(void)
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   length = snprintf(
     text, sizeof(text),
-    "CONTROL unlocked=%u mode=%u calibrated=%u hold_ms=%lu ready=%u fault=%u\r\n",
+    "CONTROL unlocked=%u mode=%u calibrated=%u ready=%u fault=%u\r\n",
     (unsigned int)link.unlocked, (unsigned int)link.mode, (unsigned int)reset.calibrated,
-    (unsigned long)link.unlock_ms, (unsigned int)link.ready, (unsigned int)link.fault);
+    (unsigned int)link.ready, (unsigned int)link.fault);
   if (length > 0 && length < (int)sizeof(text)) send_text(text);
   length = snprintf(
     text, sizeof(text),
@@ -179,6 +201,7 @@ void telemetry_task(void const * argument)
   send_text("IMU planar yaw: keep board face up, level and still during calibration.\r\n");
   while (1) {
     print_remote();
+    print_remote_diagnostic();
     print_motors();
     print_imu();
     osDelay(20);

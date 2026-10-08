@@ -67,7 +67,11 @@ void motor_service(void)
   const int motor_ids[2] = {MOTOR_A_ID, MOTOR_B_ID};
   for (int index = 0; index < 2; index++) {
     int offset = (motor_ids[index] - 1) * 2;
-    encoded_command = (uint16_t)commands[index];
+    // Clamp current again at the CAN boundary; zero remains zero.
+    int command = commands[index];
+    if (command > MOTOR_POSITION_OUTPUT_LIMIT_RAW) command = MOTOR_POSITION_OUTPUT_LIMIT_RAW;
+    if (command < -MOTOR_POSITION_OUTPUT_LIMIT_RAW) command = -MOTOR_POSITION_OUTPUT_LIMIT_RAW;
+    encoded_command = (uint16_t)(int16_t)command;
     data[offset] = (uint8_t)(encoded_command >> 8);
     data[offset + 1] = (uint8_t)encoded_command;
   }

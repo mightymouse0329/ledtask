@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usart.h"
+#include "remote_control.h"
 #include "can.h"
 /* USER CODE END Includes */
 
@@ -196,6 +197,7 @@ void CAN1_SCE_IRQHandler(void)
 
 void USART3_IRQHandler(void)
 {
+  remote_note_uart_irq();
   HAL_UART_IRQHandler(&huart3);
 }
 /* USER CODE BEGIN 1 */

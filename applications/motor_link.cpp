@@ -18,10 +18,7 @@ static float ratio_motor_rad;
 static uint32_t last_update_ms;
 static uint32_t previous_errors;
 static uint8_t initialized;
-static uint8_t unlock_pending;
-static uint32_t unlock_start_ms;
-static float unlock_yaw_rad;
-static float unlock_motor_rad[2];
+static uint8_t unlock_armed;
 
 static float limit_value(float value, float maximum)
 {
@@ -39,62 +36,28 @@ static float switch_ratio(int value)
 
 void motor_link_stop(int reason)
 {
+  motor_position_reset(0);
+  motor_position_reset(1);
   motor_manual_reset();
   motor_reset_cancel();
   link_state.active = 0;
   link_state.ready = 0;
   link_state.unlocked = 0;
   link_state.mode = RC_MODE_DISABLED;
-  link_state.unlock_ms = 0;
-  unlock_pending = 0;
+  unlock_armed = 0;
   if (!link_state.fault) link_state.fault = reason;
   link_state.output_raw[0] = 0;
   link_state.output_raw[1] = 0;
 }
 
-static void update_unlock(
-  const MotorState * motor, const RemoteState * remote, const ImuYawState * imu, uint32_t now_ms)
+static void unlock_motor(const MotorState * motor, const ImuYawState * imu)
 {
   ResetState reset;
-  if (link_state.unlocked) return;
-  if (
-    remote->left_switch != RC_SWITCH_UP ||
-    fabsf(imu->corrected_z_deg_s * IMU_DEG_TO_RAD) > MOTOR_UNLOCK_SPEED_RAD_S) {
-    unlock_pending = 0;
-    link_state.unlock_ms = 0;
-    return;
-  }
-  for (int index = 0; index < 2; index++) {
-    if (fabsf(motor->motor[index].speed_rpm * MOTOR_TWO_PI / 60.0f) > MOTOR_UNLOCK_SPEED_RAD_S) {
-      unlock_pending = 0;
-      link_state.unlock_ms = 0;
-      return;
-    }
-  }
-  if (!unlock_pending) {
-    unlock_start_ms = now_ms;
-    unlock_yaw_rad = imu->yaw_rad;
-    for (int index = 0; index < 2; index++) {
-      unlock_motor_rad[index] = motor->motor[index].relative_angle_rad;
-    }
-    unlock_pending = 1;
-  }
-  if (
-    fabsf(imu->yaw_rad - unlock_yaw_rad) > MOTOR_UNLOCK_STILL_RAD ||
-    fabsf(motor->motor[0].relative_angle_rad - unlock_motor_rad[0]) > MOTOR_UNLOCK_STILL_RAD ||
-    fabsf(motor->motor[1].relative_angle_rad - unlock_motor_rad[1]) > MOTOR_UNLOCK_STILL_RAD) {
-    unlock_pending = 0;
-    link_state.unlock_ms = 0;
-    return;
-  }
-  link_state.unlock_ms = now_ms - unlock_start_ms;
-  if (link_state.unlock_ms < MOTOR_UNLOCK_HOLD_MS) return;
   motor_reset_get_state(&reset);
   if (!reset.calibrated) motor_reset_capture(motor, imu->yaw_rad);
   link_state.unlocked = 1;
   link_state.ready = 1;
   link_state.fault = 0;
-  unlock_pending = 0;
 }
 
 void motor_link_update(
@@ -155,6 +118,8 @@ void motor_link_update(
   }
 
   if (remote->right_switch == RC_SWITCH_DOWN) {
+    motor_position_reset(0);
+    motor_position_reset(1);
     motor_manual_reset();
     motor_reset_cancel();
     link_state.active = 0;
@@ -167,12 +132,14 @@ void motor_link_update(
       link_state.target_rad[index] = motor->motor[index].relative_angle_rad;
       link_state.reference_rad[index] = link_state.target_rad[index];
     }
-    update_unlock(motor, remote, imu, now_ms);
+    if (!link_state.unlocked) unlock_armed = 1;
     link_state.ready = link_state.unlocked;
     return;
   }
-  unlock_pending = 0;
-  link_state.unlock_ms = 0;
+  if (!link_state.unlocked && unlock_armed) {
+    unlock_motor(motor, imu);
+    unlock_armed = 0;
+  }
   if (!link_state.unlocked || link_state.fault) return;
   int requested_mode;
   if (remote->right_switch == RC_SWITCH_MID && remote->mode == RC_MODE_LINK) {
@@ -184,6 +151,8 @@ void motor_link_update(
     return;
   }
   if (!link_state.active || link_state.mode != requested_mode) {
+    motor_position_reset(0);
+    motor_position_reset(1);
     motor_manual_reset();
     motor_reset_cancel();
     entry_yaw_rad = imu->yaw_rad;
@@ -253,13 +222,15 @@ void motor_link_update(
       return;
     }
     if (link_state.mode == RC_MODE_LINK && manual.source == index + 1) {
+      motor_position_reset(index);
       link_state.reference_rad[index] = angle_rad;
       next_output[index] = 0;
       continue;
     }
     link_state.reference_rad[index] +=
       limit_value(link_state.target_rad[index] - link_state.reference_rad[index], reference_step);
-    float output = motor_position_output(link_state.reference_rad[index], angle_rad, speed_rad_s);
+    float output = motor_position_output(
+      index, link_state.reference_rad[index], angle_rad, speed_rad_s, elapsed_ms / 1000.0f);
     if (!isfinite(output)) {
       motor_link_stop(LINK_FAULT_LIMIT);
       return;

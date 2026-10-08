@@ -6,6 +6,7 @@
 
 static uint8_t receive_buffer[36];
 static volatile RemoteState remote;
+static volatile RemoteDiagnostic diagnostic;
 static volatile uint32_t last_frame_ms;
 static volatile uint8_t consecutive_frames;
 static volatile uint8_t restart_needed;
@@ -27,8 +28,13 @@ static void invalidate_remote(void)
 static void receive_again(void)
 {
   restart_needed = 1;
-  if (HAL_UARTEx_ReceiveToIdle_IT(&huart3, receive_buffer, sizeof(receive_buffer)) == HAL_OK) {
+  HAL_StatusTypeDef status =
+    HAL_UARTEx_ReceiveToIdle_IT(&huart3, receive_buffer, sizeof(receive_buffer));
+  diagnostic.start_status = status;
+  if (status == HAL_OK) {
     restart_needed = 0;
+  } else {
+    diagnostic.start_errors++;
   }
 }
 
@@ -85,7 +91,17 @@ static int decode_frame(const uint8_t data[])
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef * huart, uint16_t size)
 {
   if (huart->Instance != USART3) return;
-  if (size != 18 || !decode_frame(receive_buffer)) {
+  diagnostic.events++;
+  diagnostic.bytes += size;
+  diagnostic.last_size = size;
+  int valid = 0;
+  if (size != 18)
+    diagnostic.length_errors++;
+  else {
+    valid = decode_frame(receive_buffer);
+    if (!valid) diagnostic.decode_errors++;
+  }
+  if (!valid) {
     remote.errors++;
     invalidate_remote();
   }
@@ -95,6 +111,8 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef * huart, uint16_t size)
 void HAL_UART_ErrorCallback(UART_HandleTypeDef * huart)
 {
   if (huart->Instance != USART3) return;
+  diagnostic.uart_errors++;
+  diagnostic.last_uart_error = HAL_UART_GetError(huart);
   remote.errors++;
   invalidate_remote();
   HAL_UART_AbortReceive(&huart3);
@@ -132,5 +150,32 @@ void remote_get_state(RemoteState * state)
   state->mode = remote.mode;
   state->frames = remote.frames;
   state->errors = remote.errors;
+  taskEXIT_CRITICAL();
+}
+
+void remote_note_uart_irq(void)
+{
+  diagnostic.irq_count++;
+}
+
+void remote_get_diagnostic(RemoteDiagnostic * result)
+{
+  taskENTER_CRITICAL();
+  result->events = diagnostic.events;
+  result->bytes = diagnostic.bytes;
+  result->last_size = diagnostic.last_size;
+  result->length_errors = diagnostic.length_errors;
+  result->decode_errors = diagnostic.decode_errors;
+  result->uart_errors = diagnostic.uart_errors;
+  result->start_errors = diagnostic.start_errors;
+  result->last_uart_error = diagnostic.last_uart_error;
+  result->start_status = diagnostic.start_status;
+  result->irq_count = diagnostic.irq_count;
+  /* Snapshot of the current transfer, not a cumulative byte counter. */
+  result->buffered_bytes = 0;
+  if (huart3.RxState == HAL_UART_STATE_BUSY_RX &&
+      huart3.RxXferCount <= huart3.RxXferSize) {
+    result->buffered_bytes = huart3.RxXferSize - huart3.RxXferCount;
+  }
   taskEXIT_CRITICAL();
 }

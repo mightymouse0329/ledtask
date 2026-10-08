@@ -19,7 +19,6 @@ struct LinkState
 {
   uint8_t unlocked;
   uint8_t mode;
-  uint32_t unlock_ms;
   uint8_t active;
   uint8_t ready;
   uint8_t fault;

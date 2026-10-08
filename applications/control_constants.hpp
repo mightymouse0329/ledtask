@@ -10,7 +10,9 @@ constexpr int RC_MODE_RESET = 2;
 constexpr int MOTOR_A_ID = 1;
 constexpr int MOTOR_B_ID = 2;
 constexpr int MOTOR_FEEDBACK_TIMEOUT_MS = 100;
-constexpr int MOTOR_COMMAND_ID = 0x1FF;
+// GM6020 current commands for motor IDs 1 to 4.
+constexpr int MOTOR_COMMAND_ID = 0x1FE;
+constexpr float MOTOR_CURRENT_RAW_PER_AMP = 16384.0f / 3.0f;
 
 constexpr int MOTOR_ENCODER_COUNTS = 8192;
 constexpr int MOTOR_ENCODER_HALF_COUNTS = MOTOR_ENCODER_COUNTS / 2;
@@ -22,8 +24,17 @@ constexpr float MOTOR_POSITION_RAMP_RAD_S = 0.2f;
 constexpr float MOTOR_POSITION_SPEED_LIMIT_RAD_S = 0.5f;
 constexpr float MOTOR_POSITION_TRIP_SPEED_RAD_S = 1.0f;
 constexpr float MOTOR_POSITION_GAIN = 2.0f;
-constexpr float MOTOR_SPEED_GAIN = 1000.0f;
-constexpr int MOTOR_POSITION_OUTPUT_LIMIT_RAW = 1500;
+// Speed PID: Kp [A/(rad/s)], Ki [A/rad], Kd [A/(rad/s^2)].
+constexpr float MOTOR_SPEED_KP = 0.15f;
+constexpr float MOTOR_SPEED_KI = 0.05f;
+constexpr float MOTOR_SPEED_KD = 0.0f;
+constexpr float MOTOR_SPEED_I_LIMIT_A = 0.10f;
+constexpr float MOTOR_SPEED_D_FILTER_S = 0.05f;
+constexpr float MOTOR_CURRENT_LIMIT_A = 0.20f;
+constexpr int MOTOR_POSITION_OUTPUT_LIMIT_RAW =
+  (int)(MOTOR_CURRENT_LIMIT_A * MOTOR_CURRENT_RAW_PER_AMP);
+static_assert(MOTOR_CURRENT_LIMIT_A > 0.0f && MOTOR_CURRENT_LIMIT_A <= 3.0f,
+              "Current limit must be within the GM6020 command range");
 constexpr int MOTOR_POSITION_MAX_TEMP_DEG_C = 60;
 constexpr int MOTOR_POSITION_MAX_INTERVAL_MS = 50;
 
@@ -34,7 +45,7 @@ constexpr float MOTOR_LINK_MAX_ERROR_RAD = 0.523598776f;
 static_assert(
   MOTOR_A_ID >= 1 && MOTOR_A_ID <= 4 && MOTOR_B_ID >= 1 && MOTOR_B_ID <= 4 &&
     MOTOR_A_ID != MOTOR_B_ID,
-  "Motor IDs must be different and in the 0x1FF group");
+  "Motor IDs must be different and in the 0x1FE current-command group");
 static_assert(
   (MOTOR_A_DIRECTION == 1 || MOTOR_A_DIRECTION == -1) &&
     (MOTOR_B_DIRECTION == 1 || MOTOR_B_DIRECTION == -1),
@@ -51,9 +62,6 @@ constexpr float MOTOR_MANUAL_YAW_QUIET_RAD_S = 0.02f;
 constexpr float MOTOR_MANUAL_STILL_SPEED_RAD_S = 0.04f;
 constexpr float MOTOR_MANUAL_STILL_TRAVEL_RAD = 0.003f;
 
-constexpr int MOTOR_UNLOCK_HOLD_MS = 2000;
-constexpr float MOTOR_UNLOCK_STILL_RAD = 0.01f;
-constexpr float MOTOR_UNLOCK_SPEED_RAD_S = 0.04f;
 constexpr int MOTOR_RESET_SETTLE_MS = 500;
 constexpr int MOTOR_RESET_TIMEOUT_MS = 30000;
 constexpr float MOTOR_RESET_ERROR_RAD = 0.034906585f;
