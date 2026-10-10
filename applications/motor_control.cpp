@@ -3,9 +3,27 @@
 #include "FreeRTOS.h"
 #include "can.h"
 #include "motor_link.hpp"
+#include "motor_report.hpp"
+#include "motor/rm_motor/rm_motor.hpp"
 #include "task.h"
 
 static volatile MotorState motor_state;
+static sp::RM_Motor middleware_motors[2] = {
+  sp::RM_Motor(MOTOR_A_ID, sp::RM_Motors::GM6020),
+  sp::RM_Motor(MOTOR_B_ID, sp::RM_Motors::GM6020),
+};
+
+void motor_control_task(void const * argument)
+{
+  (void)argument;
+  TickType_t last_wake_time = xTaskGetTickCount();
+  const TickType_t period = pdMS_TO_TICKS(MOTOR_CONTROL_PERIOD_MS);
+  configASSERT(period > 0);
+  for (;;) {
+    motor_service();
+    vTaskDelayUntil(&last_wake_time, period);
+  }
+}
 
 static int start_can(void)
 {
@@ -39,8 +57,7 @@ void motor_service(void)
   MotorState snapshot;
   RemoteState remote;
   ImuYawState imu;
-  int16_t commands[2] = {0};
-  uint16_t encoded_command;
+  MotorOutput output = {};
   CAN_TxHeaderTypeDef header = {};
   uint8_t data[8] = {0};
   uint32_t mailbox;
@@ -57,25 +74,25 @@ void motor_service(void)
   motor_get_state(&snapshot);
   remote_get_state(&remote);
   imu_yaw_get_state(&imu);
-  motor_link_update(&snapshot, &remote, &imu, HAL_GetTick(), commands);
+  motor_link_update(&snapshot, &remote, &imu, HAL_GetTick(), &output);
   if ((hcan1.Instance->ESR & CAN_ESR_BOFF) || HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) != 3) {
     motor_link_stop(LINK_FAULT_CAN);
     HAL_CAN_AbortTxRequest(&hcan1, CAN_TX_MAILBOX0 | CAN_TX_MAILBOX1 | CAN_TX_MAILBOX2);
     motor_state.skipped_frames++;
+    motor_report_record(&snapshot, &remote, &imu, HAL_GetTick());
     return;
   }
-  const int motor_ids[2] = {MOTOR_A_ID, MOTOR_B_ID};
   for (int index = 0; index < 2; index++) {
-    int offset = (motor_ids[index] - 1) * 2;
-    // Clamp current again at the CAN boundary; zero remains zero.
-    int command = commands[index];
-    if (command > MOTOR_POSITION_OUTPUT_LIMIT_RAW) command = MOTOR_POSITION_OUTPUT_LIMIT_RAW;
-    if (command < -MOTOR_POSITION_OUTPUT_LIMIT_RAW) command = -MOTOR_POSITION_OUTPUT_LIMIT_RAW;
-    encoded_command = (uint16_t)(int16_t)command;
-    data[offset] = (uint8_t)(encoded_command >> 8);
-    data[offset + 1] = (uint8_t)encoded_command;
+    int command = output.command_raw[index];
+    // Last-resort net: each mode already clamped to its own limit (the open-loop test uses a
+    // higher one), so this must not clip a valid command.
+    if (command > MOTOR_HARD_OUTPUT_LIMIT_RAW) command = MOTOR_HARD_OUTPUT_LIMIT_RAW;
+    if (command < -MOTOR_HARD_OUTPUT_LIMIT_RAW) command = -MOTOR_HARD_OUTPUT_LIMIT_RAW;
+    float current_a = command / MOTOR_CURRENT_RAW_PER_AMP;
+    middleware_motors[index].cmd(current_a * MOTOR_GM6020_TORQUE_PER_AMP);
+    middleware_motors[index].write(data);
   }
-  header.StdId = MOTOR_COMMAND_ID;
+  header.StdId = middleware_motors[0].tx_id;
   header.IDE = CAN_ID_STD;
   header.RTR = CAN_RTR_DATA;
   header.DLC = 8;
@@ -86,6 +103,7 @@ void motor_service(void)
     motor_link_stop(LINK_FAULT_CAN);
     motor_state.skipped_frames++;
   }
+  motor_report_record(&snapshot, &remote, &imu, HAL_GetTick());
 }
 
 static int16_t read_signed_value(const uint8_t * data)
@@ -156,12 +174,15 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
       motor_state.invalid_frames++;
       continue;
     }
+    for (int byte = 0; byte < 8; byte++) motor_state.motor[index].raw_frame[byte] = data[byte];
     uint32_t now_ms = HAL_GetTick();
+    middleware_motors[index].read(data, now_ms);
     update_motor_angle(index, encoder_raw, now_ms);
     motor_state.motor[index].encoder_raw = encoder_raw;
     motor_state.motor[index].speed_rpm = read_signed_value(&data[2]);
+    motor_state.motor[index].speed_rad_s = middleware_motors[index].speed;
     motor_state.motor[index].current_raw = read_signed_value(&data[4]);
-    motor_state.motor[index].temperature_deg_c = data[6];
+    motor_state.motor[index].temperature_deg_c = middleware_motors[index].temperature;
     motor_state.motor[index].last_feedback_ms = now_ms;
     motor_state.motor[index].received = 1;
     motor_state.motor[index].frames++;
@@ -192,19 +213,22 @@ void motor_get_state(MotorState * state)
   state->invalid_frames = motor_state.invalid_frames;
   state->error_events = motor_state.error_events;
   state->error_flags = motor_state.error_flags;
+  now_ms = HAL_GetTick();
   for (index = 0; index < 2; index++) {
+    for (int byte = 0; byte < 8; byte++)
+      state->motor[index].raw_frame[byte] = motor_state.motor[index].raw_frame[byte];
     state->motor[index].relative_counts = motor_state.motor[index].relative_counts;
     state->motor[index].angle_valid = motor_state.motor[index].angle_valid;
     state->motor[index].encoder_raw = motor_state.motor[index].encoder_raw;
     state->motor[index].speed_rpm = motor_state.motor[index].speed_rpm;
+    state->motor[index].speed_rad_s = motor_state.motor[index].speed_rad_s;
     state->motor[index].current_raw = motor_state.motor[index].current_raw;
     state->motor[index].temperature_deg_c = motor_state.motor[index].temperature_deg_c;
-    state->motor[index].online = motor_state.motor[index].online;
+    state->motor[index].online = middleware_motors[index].is_alive(now_ms);
     state->motor[index].received = motor_state.motor[index].received;
     state->motor[index].last_feedback_ms = motor_state.motor[index].last_feedback_ms;
     state->motor[index].frames = motor_state.motor[index].frames;
   }
-  now_ms = HAL_GetTick();
   state->bus_off = (hcan1.Instance->ESR & CAN_ESR_BOFF) != 0;
   taskEXIT_CRITICAL();
   for (index = 0; index < 2; index++) {
@@ -215,8 +239,5 @@ void motor_get_state(MotorState * state)
     state->motor[index].angle_valid =
       state->motor[index].angle_valid && state->motor[index].received &&
       now_ms - state->motor[index].last_feedback_ms < MOTOR_ANGLE_MAX_GAP_MS;
-    state->motor[index].online =
-      state->motor[index].received &&
-      now_ms - state->motor[index].last_feedback_ms < MOTOR_FEEDBACK_TIMEOUT_MS;
   }
 }

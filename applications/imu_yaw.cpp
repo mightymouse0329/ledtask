@@ -9,10 +9,12 @@
 static ImuYawState yaw_state;
 static uint32_t warmup_start_ms;
 static uint32_t calibration_start_ms;
+static uint32_t level_invalid_start_ms;
 static float calibration_sum[3];
 static float calibration_min[3];
 static float calibration_max[3];
 static float previous_rate_deg_s;
+static uint8_t level_invalid_timing;
 
 static void reset_calibration(void)
 {
@@ -35,6 +37,7 @@ void imu_yaw_begin(uint32_t now_ms)
   yaw_state.state = IMU_WARMUP;
   yaw_state.valid = 0;
   warmup_start_ms = now_ms;
+  level_invalid_timing = 0;
   reset_calibration();
 }
 
@@ -127,6 +130,7 @@ void imu_yaw_update(const float acceleration_mps2[3], const float gyro_deg_s[3],
       yaw_state.reason = IMU_REASON_NONE;
       yaw_state.state = IMU_READY;
       yaw_state.valid = 1;
+      level_invalid_timing = 0;
     }
     return;
   }
@@ -135,7 +139,12 @@ void imu_yaw_update(const float acceleration_mps2[3], const float gyro_deg_s[3],
     invalidate_yaw(IMU_REASON_RANGE);
     return;
   }
-  if (!yaw_state.level) {
+  if (yaw_state.level) {
+    level_invalid_timing = 0;
+  } else if (!level_invalid_timing) {
+    level_invalid_start_ms = now_ms;
+    level_invalid_timing = 1;
+  } else if (now_ms - level_invalid_start_ms >= IMU_LEVEL_FAULT_DELAY_MS) {
     invalidate_yaw(IMU_REASON_LEVEL);
     return;
   }

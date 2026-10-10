@@ -15,6 +15,7 @@ constexpr int IMU_REASON_LEVEL = 3;
 constexpr int IMU_REASON_RANGE = 4;
 constexpr int IMU_SAMPLE_PERIOD_MS = 5;
 constexpr int IMU_MAX_GAP_MS = 20;
+constexpr int IMU_LEVEL_FAULT_DELAY_MS = 100;
 constexpr int IMU_WARMUP_MS = 3000;
 constexpr int IMU_CALIBRATION_MS = 2000;
 constexpr int IMU_CALIBRATION_SAMPLES = 400;

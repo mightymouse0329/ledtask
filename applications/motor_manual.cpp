@@ -9,6 +9,7 @@ static ManualState manual;
 static uint32_t settling_ms;
 static float quiet_yaw_rad;
 static float quiet_target_rad[2];
+static float quiet_actual_rad[2];
 static float source_start_target_rad[2];
 static float source_start_yaw_rad;
 static float source_ratio;
@@ -53,13 +54,18 @@ int motor_manual_update(
     if (!manual.ready) {
       if (!settling_ms) {
         quiet_yaw_rad = yaw_rad;
-        for (int index = 0; index < 2; index++) quiet_target_rad[index] = target_rad[index];
+        for (int index = 0; index < 2; index++) {
+          quiet_target_rad[index] = target_rad[index];
+          quiet_actual_rad[index] = motor->motor[index].relative_angle_rad;
+        }
       }
       for (int index = 0; index < 2; index++) {
         if (
           fabsf(motor->motor[index].relative_angle_rad - target_rad[index]) >
             MOTOR_MANUAL_SETTLED_ERROR_RAD ||
-          fabsf(motor_speed_rad_s(motor, index)) > MOTOR_MANUAL_STILL_SPEED_RAD_S ||
+          fabsf(motor_speed_rad_s(motor, index)) > MOTOR_MANUAL_SETTLE_SPEED_RAD_S ||
+          fabsf(motor->motor[index].relative_angle_rad - quiet_actual_rad[index]) >
+            MOTOR_MANUAL_STILL_TRAVEL_RAD ||
           fabsf(target_rad[index] - quiet_target_rad[index]) > MOTOR_MANUAL_TARGET_QUIET_RAD ||
           fabsf(yaw_rad - quiet_yaw_rad) > MOTOR_MANUAL_YAW_QUIET_RAD) {
           motor_manual_reset();
@@ -124,9 +130,9 @@ int motor_manual_update(
     target_rad[0] = source_start_target_rad[0] + MOTOR_A_DIRECTION * common_change_rad;
   }
 
-  if (
-    fabsf(motor_speed_rad_s(motor, source_index)) > MOTOR_MANUAL_STILL_SPEED_RAD_S ||
-    fabsf(source_angle_rad - still_angle_rad) > MOTOR_MANUAL_STILL_TRAVEL_RAD) {
+  // "The hand let go" is decided from displacement only: the reported speed is quantised too
+  // coarsely at a few rpm to be used as a stillness test.
+  if (fabsf(source_angle_rad - still_angle_rad) > MOTOR_MANUAL_STILL_TRAVEL_RAD) {
     manual.still_ms = 0;
     still_angle_rad = source_angle_rad;
   } else {

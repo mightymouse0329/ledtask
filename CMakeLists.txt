@@ -49,15 +49,20 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     applications/led_task.c
     applications/buzzer_task.c
+    applications/serialport_task.cpp
     applications/imu_task.cpp
     applications/imu_yaw.cpp
     applications/bmi088_simple.c
     applications/remote_control.cpp
     applications/motor_control.cpp
+    applications/motor_report.cpp
     applications/motor_position.cpp
     applications/motor_link.cpp
     applications/motor_manual.cpp
     applications/motor_reset.cpp
+    sp_middleware/tools/math_tools/math_tools.cpp
+    sp_middleware/motor/rm_motor/rm_motor.cpp
+    sp_middleware/tools/pid/pid.cpp
 )
 
 # Add include paths
@@ -84,4 +89,3 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
-

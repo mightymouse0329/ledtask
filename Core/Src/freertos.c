@@ -127,6 +127,10 @@ void MX_FREERTOS_Init(void) {
   if (osThreadCreate(osThread(imutask), NULL) == NULL) {
     Error_Handler();
   }
+  osThreadDef(motorcontroltask, motor_control_task, osPriorityHigh, 0, 512);
+  if (osThreadCreate(osThread(motorcontroltask), NULL) == NULL) {
+    Error_Handler();
+  }
   osThreadDef(telemetrytask, telemetry_task, osPriorityLow, 0, 1024);
   if (osThreadCreate(osThread(telemetrytask), NULL) == NULL) {
     Error_Handler();
@@ -150,7 +154,6 @@ void StartDefaultTask(void const * argument)
   for(;;)
   {
     remote_service();
-    motor_service();
     app_heartbeat();
     osDelay(20);
   }
