@@ -30,8 +30,6 @@ static float limit_value(float value, float maximum)
   return value;
 }
 
-// Mode 4 only: left stick vertical channel -> raw current command for both motors.
-// Bypasses both PID loops; the protections above still apply.
 static float open_loop_current_raw(const RemoteState * remote)
 {
   int stick = remote->channel[3];
@@ -103,9 +101,7 @@ void motor_link_update(
   int new_error = motor->error_events != previous_errors;
   float ratio = switch_ratio(remote->left_switch);
   int16_t next_output[2];
-  // Reference angular rate per motor, used as velocity feedforward by the position loop.
   float reference_rate_rad_s[2] = {0.0f, 0.0f};
-  // Speed cap for the position-controlled modes; reset approaches more slowly than linkage.
   float speed_cap_rad_s = MOTOR_POSITION_MAX_TARGET_SPEED_RAD_S;
   int16_t previous_output[2] = {
     link_state.output_raw[0],
@@ -119,7 +115,6 @@ void motor_link_update(
   }
   output->command_raw[0] = 0;
   output->command_raw[1] = 0;
-  // Refreshed every cycle; motor_link_stop() overwrites it with the current stop reason.
   link_state.block = LINK_FAULT_NONE;
   link_state.motor_flags[0] = 0;
   link_state.motor_flags[1] = 0;
@@ -128,8 +123,6 @@ void motor_link_update(
   link_state.target_speed_rad_s[0] = 0.0f;
   link_state.target_speed_rad_s[1] = 0.0f;
 
-  // The open-loop bench tests do not use yaw, so they keep running when the IMU drops out
-  // (a motor jerk can fail the accelerometer level check). Every other mode needs it.
   int open_loop =
     (link_state.mode == RC_MODE_CURRENT_TEST || link_state.mode == RC_MODE_SPIN_TEST);
   if (
@@ -140,8 +133,7 @@ void motor_link_update(
     motor_link_stop(LINK_FAULT_IMU);
     return;
   }
-  // The spin test is open loop and speed bounded by the commanded voltage, so it uses its
-  // own overspeed limit instead of the tighter linkage limit.
+
   float trip_speed_rad_s = (link_state.mode == RC_MODE_SPIN_TEST)
                              ? MOTOR_SPIN_TEST_TRIP_SPEED_RAD_S
                              : MOTOR_POSITION_TRIP_SPEED_RAD_S;
@@ -153,7 +145,6 @@ void motor_link_update(
     if (age_ms >= MOTOR_ANGLE_MAX_GAP_MS) flags |= 4;
     if (!isfinite(motor->motor[index].relative_angle_rad)) flags |= 8;
     if (motor->motor[index].temperature_deg_c >= MOTOR_POSITION_MAX_TEMP_DEG_C) flags |= 16;
-    // Debounce: one noisy speed sample must not latch the overspeed fault.
     if (fabsf(motor->motor[index].speed_rpm * MOTOR_TWO_PI / 60.0f) > trip_speed_rad_s) {
       speed_trip_cycles[index]++;
     } else {
@@ -167,8 +158,7 @@ void motor_link_update(
   int healthy_motors = (motor_flags[0] == 0) + (motor_flags[1] == 0);
   for (int index = 0; index < 2; index++) {
     if (!motor_flags[index]) continue;
-    // Bench option: a motor that only lacks feedback is skipped (kept at zero output) as long
-    // as the other motor is healthy. Every other condition still stops the whole system.
+
     if (
       MOTOR_ALLOW_SINGLE_ONLINE && healthy_motors >= 1 &&
       (motor_flags[index] & (uint8_t)~7u) == 0) {
@@ -177,7 +167,6 @@ void motor_link_update(
     }
     {
       uint32_t age_ms = now_ms - motor->motor[index].last_feedback_ms;
-      // Preserve the first fault snapshot until successful re-arming.
       if (!link_state.fault) {
         link_state.fault_motor = index + 1;
         link_state.fault_flags = motor_flags[index];
@@ -232,10 +221,7 @@ void motor_link_update(
     unlock_armed = 0;
   }
   if (!link_state.unlocked || link_state.fault) return;
-  // Right switch selects the family. Right UP is always reset, exactly as the task
-  // specification requires (the left switch is ignored there). The bench test modes are only
-  // reachable when MOTOR_BENCH_TEST_MODES is enabled, where the left switch picks the sub-mode:
-  // LEFT UP = speed-loop spin test, LEFT MID = reset, LEFT DOWN = open-loop current test.
+
   int requested_mode;
   if (remote->right_switch == RC_SWITCH_MID && remote->mode == RC_MODE_LINK) {
     requested_mode = RC_MODE_LINK;
@@ -281,20 +267,17 @@ void motor_link_update(
       motor_link_stop(LINK_FAULT_RESET);
       return;
     }
-    // The reset target follows the yaw 1:1 as well, so it gets the same feedforward, but the
-    // approach to an entry target up to 180 deg away uses a slower cap.
+
     float yaw_rate_rad_s = imu->corrected_z_deg_s * IMU_DEG_TO_RAD;
     reference_rate_rad_s[0] = MOTOR_A_DIRECTION * yaw_rate_rad_s;
     reference_rate_rad_s[1] = MOTOR_B_DIRECTION * yaw_rate_rad_s;
     speed_cap_rad_s = MOTOR_RESET_MAX_TARGET_SPEED_RAD_S;
   } else if (link_state.mode == RC_MODE_SPIN_TEST) {
-    // Speed-loop spin test: no motion target, the angle columns only report feedback.
     for (int index = 0; index < 2; index++) {
       link_state.target_rad[index] = motor->motor[index].relative_angle_rad;
       link_state.reference_rad[index] = link_state.target_rad[index];
     }
   } else if (link_state.mode == RC_MODE_CURRENT_TEST) {
-    // Open loop: no motion target. The angle columns only report feedback.
     for (int index = 0; index < 2; index++) {
       link_state.target_rad[index] = motor->motor[index].relative_angle_rad;
       link_state.reference_rad[index] = link_state.target_rad[index];
@@ -324,7 +307,6 @@ void motor_link_update(
       ratio_motor_rad = link_state.target_rad[1];
     }
     link_state.yaw_reference_rad = reference_yaw_rad - MOTOR_A_DIRECTION * reference_motor_rad;
-    // A follows the yaw 1:1; B follows it scaled by the left switch ratio.
     float yaw_rate_rad_s = imu->corrected_z_deg_s * IMU_DEG_TO_RAD;
     reference_rate_rad_s[0] = MOTOR_A_DIRECTION * yaw_rate_rad_s;
     reference_rate_rad_s[1] = MOTOR_B_DIRECTION * link_state.ratio * yaw_rate_rad_s;
@@ -332,16 +314,13 @@ void motor_link_update(
   ManualState manual;
   motor_manual_get_state(&manual);
   if (link_state.mode == RC_MODE_LINK && manual.source) {
-    // A manual takeover re-bases the reference on the dragged motor, so the follower's
-    // feedforward has to come from that motor's measured speed instead of the yaw rate.
+
     int source = manual.source - 1;
     float source_speed_rad_s = motor->motor[source].speed_rad_s;
     if (source == 0) {
-      // target_B = start + MOTOR_B_DIRECTION * ratio * MOTOR_A_DIRECTION * (theta_A - start)
       reference_rate_rad_s[1] = (float)MOTOR_B_DIRECTION * link_state.ratio *
                                 (float)MOTOR_A_DIRECTION * source_speed_rad_s;
     } else {
-      // target_A = start + MOTOR_A_DIRECTION * MOTOR_B_DIRECTION * (theta_B - start) / ratio
       reference_rate_rad_s[0] = (float)MOTOR_A_DIRECTION * (float)MOTOR_B_DIRECTION *
                                 source_speed_rad_s / link_state.ratio;
     }
@@ -356,7 +335,6 @@ void motor_link_update(
       return;
     }
     if (motor_offline[index]) {
-      // Single-motor bench mode: the silent motor is held at zero output.
       motor_position_reset(index);
       link_state.reference_rad[index] = angle_rad;
       link_state.target_speed_rad_s[index] = 0.0f;
@@ -364,8 +342,7 @@ void motor_link_update(
       continue;
     }
     if (link_state.mode == RC_MODE_CURRENT_TEST) {
-      // Both motors get the same open-loop current; the stick holds the command and
-      // returning it to centre removes the output.
+
       motor_position_reset(index);
       link_state.reference_rad[index] = angle_rad;
       link_state.target_speed_rad_s[index] = 0.0f;
@@ -373,8 +350,7 @@ void motor_link_update(
       continue;
     }
     if (link_state.mode == RC_MODE_SPIN_TEST) {
-      // Encoder speed loop at a fixed slow target: real constant-speed rotation through the
-      // normal current frame. No position loop runs and no motion target is tracked.
+
       link_state.reference_rad[index] = angle_rad;
       float output = motor_position_spin_output(index, MOTOR_SPIN_TEST_TARGET_RAD_S, speed_rad_s);
       link_state.target_speed_rad_s[index] = motor_position_target_speed(index);
@@ -392,7 +368,6 @@ void motor_link_update(
       next_output[index] = 0;
       continue;
     }
-    // Track the target directly; speed and current remain bounded in the PID.
     link_state.reference_rad[index] = link_state.target_rad[index];
     float output = motor_position_output(
       index, link_state.reference_rad[index], reference_rate_rad_s[index], speed_cap_rad_s,

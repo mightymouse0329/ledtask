@@ -9,8 +9,7 @@
 constexpr float MOTOR_SPEED_PID_DT_S = MOTOR_CONTROL_PERIOD_MS / 1000.0f;
 constexpr float MOTOR_SPEED_PID_D_ALPHA =
   MOTOR_SPEED_PID_DT_S / (MOTOR_SPEED_D_FILTER_S + MOTOR_SPEED_PID_DT_S);
-// The position loop now runs with a live integral term (dynamic = true damps it while the
-// error is large, e.g. during a reset step, to limit wind-up).
+
 static sp::PID position_pid[2] = {
   sp::PID(
     MOTOR_SPEED_PID_DT_S, MOTOR_POSITION_KP, MOTOR_POSITION_KI, MOTOR_POSITION_KD,
@@ -89,8 +88,7 @@ float motor_position_output(
     return NAN;
   }
   position_pid[index].calc(reference_rad, angle_rad);
-  // Velocity feedforward: without it a P-only loop always lags a moving reference by rate/Kp.
-  // ramp_target_speed() still applies the caller's speed cap, so the total stays bounded.
+
   float requested_speed =
     position_pid[index].out + MOTOR_POSITION_FEEDFORWARD * reference_rate_rad_s;
   ramp_target_speed(index, requested_speed, dt_s, max_target_speed_rad_s);

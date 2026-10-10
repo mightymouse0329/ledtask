@@ -84,8 +84,7 @@ void motor_service(void)
   }
   for (int index = 0; index < 2; index++) {
     int command = output.command_raw[index];
-    // Last-resort net: each mode already clamped to its own limit (the open-loop test uses a
-    // higher one), so this must not clip a valid command.
+
     if (command > MOTOR_HARD_OUTPUT_LIMIT_RAW) command = MOTOR_HARD_OUTPUT_LIMIT_RAW;
     if (command < -MOTOR_HARD_OUTPUT_LIMIT_RAW) command = -MOTOR_HARD_OUTPUT_LIMIT_RAW;
     float current_a = command / MOTOR_CURRENT_RAW_PER_AMP;
@@ -151,7 +150,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef * hcan)
   int count;
 
   if (hcan->Instance != CAN1) return;
-  /* FIFO depth is three; bound the work done in one interrupt. */
+
   for (count = 0; count < 3 && HAL_CAN_GetRxFifoFillLevel(hcan, CAN_RX_FIFO0); count++) {
     if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &header, data) != HAL_OK) {
       motor_state.invalid_frames++;

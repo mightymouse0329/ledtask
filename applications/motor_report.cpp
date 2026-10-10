@@ -56,7 +56,6 @@ void motor_report_record(
     previous_valid[i] = motor->motor[i].angle_valid;
   }
   previous_ms = now_ms;
-  // Preserve the first running-to-fault transition until MCU reset.
   int fault_transition = previous_active && latest.link.fault;
   if (!frozen && (fault_transition || now_ms - last_history_ms >= history_period_ms)) {
     history[write_index] = latest;

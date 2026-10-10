@@ -130,8 +130,6 @@ int motor_manual_update(
     target_rad[0] = source_start_target_rad[0] + MOTOR_A_DIRECTION * common_change_rad;
   }
 
-  // "The hand let go" is decided from displacement only: the reported speed is quantised too
-  // coarsely at a few rpm to be used as a stillness test.
   if (fabsf(source_angle_rad - still_angle_rad) > MOTOR_MANUAL_STILL_TRAVEL_RAD) {
     manual.still_ms = 0;
     still_angle_rad = source_angle_rad;

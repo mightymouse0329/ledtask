@@ -30,30 +30,27 @@ void telemetry_task(void const * argument)
     serialport_debug[1]++;
     serialport_debug[2]++;
 
-    // Acceptance output: remote control state, then the BMI088 six-axis data.
-    // ACC is m/s^2 (includes gravity when at rest), GYRO is deg/s; both are the raw sensor
-    // axes, so tilt/turn the board to check the mounting direction of each axis.
     struct Channel {
       float value;
       int decimals;
     };
     const Channel channels[] = {
-      {(float)remote.online, 0},           // 1  receiver link valid
-      {(float)remote.armed, 0},            // 2  right switch was seen DOWN, other modes allowed
-      {(float)remote.right_switch, 0},     // 3  1 = up, 2 = down, 3 = middle
-      {(float)remote.left_switch, 0},      // 4
-      {(float)remote.mode, 0},             // 5  0 disabled, 1 link request, 2 reset request
-      {(float)remote.channel[0], 0},       // 6  right horizontal, about -660..660
-      {(float)remote.channel[1], 0},       // 7  right vertical
-      {(float)remote.channel[2], 0},       // 8  left horizontal
-      {(float)remote.channel[3], 0},       // 9  left vertical
-      {(float)(imu.state * 10 + imu.reason), 0},  // 10 30 = READY; 41/42/43/44 = faults
-      {imu.acceleration_mps2[0], 3},       // 11 ACC X
-      {imu.acceleration_mps2[1], 3},       // 12 ACC Y
-      {imu.acceleration_mps2[2], 3},       // 13 ACC Z
-      {imu.angular_velocity_deg_s[0], 3},  // 14 GYRO X
-      {imu.angular_velocity_deg_s[1], 3},  // 15 GYRO Y
-      {imu.angular_velocity_deg_s[2], 3},  // 16 GYRO Z
+      {(float)remote.online, 0},
+      {(float)remote.armed, 0},
+      {(float)remote.right_switch, 0},
+      {(float)remote.left_switch, 0},
+      {(float)remote.mode, 0},
+      {(float)remote.channel[0], 0},
+      {(float)remote.channel[1], 0},
+      {(float)remote.channel[2], 0},
+      {(float)remote.channel[3], 0},
+      {(float)(imu.state * 10 + imu.reason), 0},
+      {imu.acceleration_mps2[0], 3},
+      {imu.acceleration_mps2[1], 3},
+      {imu.acceleration_mps2[2], 3},
+      {imu.angular_velocity_deg_s[0], 3},
+      {imu.angular_velocity_deg_s[1], 3},
+      {imu.angular_velocity_deg_s[2], 3},
     };
     constexpr int channel_count = 16;
     static_assert(

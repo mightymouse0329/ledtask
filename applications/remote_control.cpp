@@ -171,7 +171,7 @@ void remote_get_diagnostic(RemoteDiagnostic * result)
   result->last_uart_error = diagnostic.last_uart_error;
   result->start_status = diagnostic.start_status;
   result->irq_count = diagnostic.irq_count;
-  /* Snapshot of the current transfer, not a cumulative byte counter. */
+
   result->buffered_bytes = 0;
   if (huart3.RxState == HAL_UART_STATE_BUSY_RX &&
       huart3.RxXferCount <= huart3.RxXferSize) {

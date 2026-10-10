@@ -22,14 +22,11 @@ struct LinkState
   uint8_t active;
   uint8_t ready;
   uint8_t fault;
-  // Live reason the control path is currently stopped (same codes as fault), refreshed
-  // every control cycle. Unlike fault, it is not the latched first fault, so it tells the
-  // operator which condition is blocking the unlock right now.
+
   uint8_t block;
   uint8_t fault_motor;
   uint8_t fault_flags;
-  // Live per-motor condition bits (1 offline, 2 angle invalid, 4 feedback aged, 8 non-finite,
-  // 16 over temperature, 32 over speed), refreshed every control cycle.
+
   uint8_t motor_flags[2];
   int16_t fault_speed_rpm;
   uint8_t fault_temperature;
@@ -49,7 +46,6 @@ struct LinkState
 
 struct MotorOutput
 {
-  // Payload of the GM6020 current command frame 0x1FE.
   int16_t command_raw[2];
 };
 

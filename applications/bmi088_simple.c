@@ -106,9 +106,9 @@ int bmi088_read(float acceleration_mps2[3], float angular_velocity_deg_s[3])
 
   for (index = 0; index < 3; index++) {
     raw = (int16_t)((acc_data[2 * index + 1] << 8) | acc_data[2 * index]);
-    acceleration_mps2[index] = raw * (6.0f * 9.80665f / 32768.0f); /* m/s^2 */
+    acceleration_mps2[index] = raw * (6.0f * 9.80665f / 32768.0f);
     raw = (int16_t)((gyro_data[2 * index + 1] << 8) | gyro_data[2 * index]);
-    angular_velocity_deg_s[index] = raw * (2000.0f / 32768.0f); /* deg/s */
+    angular_velocity_deg_s[index] = raw * (2000.0f / 32768.0f);
   }
   return 1;
 }
